@@ -40,15 +40,27 @@ export default function ProfilePage() {
     const fetchUserData = async () => {
       if (!username) return
       
-      // First try to find user by username
+      // Check if username is a placeholder for the current user's profile
+      if (username === 'user-profile' && authUser?.id) {
+        // Use the logged-in user's ID directly
+        await fetchProfile(authUser.id)
+        return
+      }
+      
+      // Try to find user by username
       const { data: userData, error: userError } = await supabase
         .from('profiles')
         .select('id')
         .eq('username', username)
-        .single()
+        .maybeSingle() // Use maybeSingle() to handle zero rows gracefully
       
-      if (userError || !userData) {
+      if (userError) {
         console.error('Error fetching user:', userError)
+        return
+      }
+      
+      if (!userData) {
+        console.error('User not found with username:', username)
         return
       }
       
@@ -57,7 +69,7 @@ export default function ProfilePage() {
     }
     
     fetchUserData()
-  }, [username, fetchProfile])
+  }, [username, fetchProfile, authUser?.id])
   
   // Fetch user content (tracks, playlists, albums)
   useEffect(() => {
