@@ -373,7 +373,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   <div className="border rounded-lg p-4">
                     <h3 className="text-lg font-medium mb-4">Username</h3>
                     <div className="space-y-2">
-                      <FormLabel>Username</FormLabel>
+                      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Username</label>
                       <Input 
                         value={profile?.username || ""} 
                         disabled 
