@@ -1,4 +1,4 @@
-import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare } from 'lucide-react';
+import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare, ShoppingCart, DollarSign } from 'lucide-react';
 import { Button } from '@/components/@/ui/button';
 import { Badge } from '@/components/@/ui/badge';
 import { useAudioPlayer, type Track } from '@/contexts/audio-player-context';
@@ -127,14 +127,25 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
         </div>
 
         {/* Purchase Actions */}
-        <div className="flex items-center gap-2 pt-2">
-          <Button className="flex-1 h-9" size="sm">
-            Buy Now ${price}
-          </Button>
-          <Button variant="outline" size="sm" className="h-9">
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Contact
-          </Button>
+        <div className="flex items-center justify-between pt-2 border-t">
+          <div className="flex items-center gap-1">
+            <DollarSign className="h-5 w-5 text-primary" />
+            <span className="font-semibold">${price}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <ShoppingCart 
+              className="h-5 w-5 text-primary cursor-pointer hover:scale-110 transition-transform" 
+              title="Buy Now"
+            />
+            <MessageSquare 
+              className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-primary hover:scale-110 transition-all" 
+              title="Contact Creator"
+            />
+            <Heart 
+              className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-red-500 hover:scale-110 transition-all" 
+              title="Add to Favorites"
+            />
+          </div>
         </div>
       </div>
     </div>
