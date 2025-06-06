@@ -18,6 +18,7 @@ import {
   UsersIcon,
   ShoppingBag,
   DollarSign,
+  Wallet,
 } from "lucide-react"
 
 import { NavMain } from "@/components/dashboard/layout/nav-main"
@@ -67,6 +68,11 @@ const data = {
       title: "Analytics",
       url: "/dashboard/analytics",
       icon: BarChartIcon,
+    },
+    {
+      title: "Wallet",
+      url: "/dashboard/wallet",
+      icon: Wallet,
     },
   ],
   navSecondary: [

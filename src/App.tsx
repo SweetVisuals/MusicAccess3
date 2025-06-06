@@ -12,6 +12,7 @@ import ProjectsPage from "@/app/dashboard/projects"
 import ContractsPage from "@/app/dashboard/contracts"
 import OrdersPage from "@/app/dashboard/orders"
 import SalesPage from "@/app/dashboard/sales"
+import WalletPage from "@/app/dashboard/wallet"
 import FindTalentPage from "@/app/home/find-talent"
 import TutorialsPage from "@/app/home/tutorials"
 import MarketingPage from "@/app/home/marketing"
@@ -139,6 +140,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <SalesPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/dashboard/wallet" 
+            element={
+              <ProtectedRoute>
+                <WalletPage />
               </ProtectedRoute>
             } 
           />
