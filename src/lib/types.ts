@@ -147,3 +147,18 @@ export interface ProfileWithStatsResponse {
   profile: Profile;
   stats: ProfileStats | null;
 }
+
+export interface Service {
+  id: string;
+  title: string;
+  type: string;
+  description: string;
+  price: number | null;
+  delivery_time: string | null;
+  revisions: number | null;
+  is_featured: boolean;
+  is_active: boolean;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
