@@ -67,7 +67,7 @@ export default function ProfilePage() {
       try {
         // Fetch tracks
         const { data: tracksData } = await supabase
-          .from('tracks')
+          .from('audio_tracks')
           .select('*')
           .eq('user_id', profile.id)
         
