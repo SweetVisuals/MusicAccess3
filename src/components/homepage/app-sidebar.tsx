@@ -18,7 +18,7 @@ import {
   UsersIcon,
 } from "lucide-react"
 
-import { NavDocuments } from "@/components/dashboard/layout/nav-documents"
+import { NavDocuments } from "@/components/homepage/nav-documents"
 import { NavMain } from "@/components/dashboard/layout/nav-main"
 import { NavSecondary } from "@/components/dashboard/layout/nav-secondary"
 import { NavUser } from "@/components/homepage/nav-user"
@@ -94,19 +94,7 @@ const data = {
       icon: SearchIcon,
     },
   ],
-  documents: [
-    {
-      name: "Trending",
-      url: "#",
-      icon: DatabaseIcon,
-    },
-    {
-      name: "Genres",
-      url: "#",
-      icon: ClipboardListIcon,
-    },
-  ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user, isLoading } = useAuth()
@@ -138,7 +126,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={filteredNavMain} showQuickActions={!!user} />
         {user && (
           <>
-            <NavDocuments items={data.documents} />
+            <NavDocuments />
             <NavSecondary items={data.navSecondary} className="mt-auto" />
           </>
         )}

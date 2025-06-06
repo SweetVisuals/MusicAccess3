@@ -187,6 +187,7 @@ function App() {
           <Route path="/tutorials" element={<TutorialsPage />} />
           <Route path="/marketing" element={<MarketingPage />} />
           <Route path="/collaborate" element={<CollaboratePage />} />
+          <Route path="/following" element={<CollaboratePage />} />
           <Route path="*" element={<Navigate to="/\" replace />} />
         </Routes>
         <AudioPlayer />
