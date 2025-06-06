@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom"
 import { Separator } from "@/components/@/ui/separator"
 import { SidebarTrigger } from "@/components/@/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/@/ui/avatar"
@@ -21,6 +22,38 @@ export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth()
   const [gemBalance, setGemBalance] = useState<number>(0)
   const [walletBalance, setWalletBalance] = useState<number>(0)
+  const location = useLocation()
+
+  // Get the current page title based on the URL path
+  const getPageTitle = () => {
+    // Remove leading slash and get the first segment of the path
+    const path = location.pathname.split('/')[1]
+    
+    // Special case for root path
+    if (path === '') return 'Discover'
+    
+    // Special case for dashboard
+    if (path === 'dashboard' && location.pathname === '/dashboard') return 'Dashboard'
+    
+    // For dashboard sub-pages, get the second segment
+    if (path === 'dashboard' && location.pathname.split('/').length > 2) {
+      const subPath = location.pathname.split('/')[2]
+      // Capitalize the first letter of each word
+      return subPath.split('-').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ')
+    }
+    
+    // For user profile pages
+    if (path === 'user' && location.pathname.split('/').length > 2) {
+      return 'Profile'
+    }
+    
+    // For other pages, capitalize the first letter of each word
+    return path.split('-').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ')
+  }
 
   // Fetch user's gem and wallet balance
   useEffect(() => {
@@ -52,13 +85,36 @@ export function SiteHeader() {
           .eq('user_id', user.id)
           .maybeSingle()
         
-        if (error) throw error
+        if (error && error.code !== 'PGRST116') {
+          // Only throw if it's not the "no rows returned" error
+          throw error
+        }
         
         if (data) {
           setWalletBalance(Number(data.balance) || 0)
+        } else {
+          // If no wallet exists, create one
+          await createUserWallet()
         }
       } catch (error) {
         console.error('Error fetching user wallet:', error)
+      }
+    }
+
+    const createUserWallet = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_wallets')
+          .insert([{ user_id: user.id, balance: 0 }])
+          .select()
+        
+        if (error) throw error
+        
+        if (data && data[0]) {
+          setWalletBalance(Number(data[0].balance) || 0)
+        }
+      } catch (error) {
+        console.error('Error creating user wallet:', error)
       }
     }
 
@@ -88,7 +144,7 @@ export function SiteHeader() {
             orientation="vertical"
             className="mx-2 data-[orientation=vertical]:h-4"
           />
-          <h1 className="text-base font-medium">Discover</h1>
+          <h1 className="text-base font-medium">{getPageTitle()}</h1>
         </div>
 
         <div className="flex items-center gap-4">

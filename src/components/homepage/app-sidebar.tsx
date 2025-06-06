@@ -1,5 +1,6 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
+import { useLocation } from "react-router-dom"
 import {
   ArrowUpCircleIcon,
   BarChartIcon,
@@ -98,6 +99,7 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user, isLoading } = useAuth()
+  const location = useLocation()
 
   if (isLoading) return null
 
