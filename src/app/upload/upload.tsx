@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Progress } from '@/components/ui/progress';
+import { Progress } from '@/components/@/ui/progress';
 import { FileItem } from '@/lib/types';
 
 export default function FileManager() {
