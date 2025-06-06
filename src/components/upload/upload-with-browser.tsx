@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '@/contexts/auth-context';
@@ -917,11 +917,7 @@ export function UnifiedFileBrowser({
           </div>
 
           <div className="flex-1 p-4">
-            {loading ? (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground">Loading files...</p>
-              </div>
-            ) : filteredFiles.length === 0 ? (
+            {filteredFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <FileIcon className="h-12 w-12 mb-4 opacity-30" />
                 <p>No files found</p>
