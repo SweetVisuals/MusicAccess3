@@ -14,9 +14,68 @@ import {
 import { Bell, Settings, LogOut, User, MessageSquare, LayoutGrid, Wallet, Gem } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth()
+  const [gemBalance, setGemBalance] = useState<number>(0)
+  const [walletBalance, setWalletBalance] = useState<number>(0)
+
+  // Fetch user's gem and wallet balance
+  useEffect(() => {
+    if (!user) return
+
+    const fetchUserStats = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_stats')
+          .select('gems')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (error) throw error
+        
+        if (data) {
+          setGemBalance(data.gems || 0)
+        }
+      } catch (error) {
+        console.error('Error fetching user stats:', error)
+      }
+    }
+
+    const fetchUserWallet = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (error) throw error
+        
+        if (data) {
+          setWalletBalance(Number(data.balance) || 0)
+        }
+      } catch (error) {
+        console.error('Error fetching user wallet:', error)
+      }
+    }
+
+    fetchUserStats()
+    fetchUserWallet()
+
+    // Listen for gem balance updates
+    const handleGemBalanceUpdate = () => {
+      fetchUserStats()
+    }
+
+    window.addEventListener('gem-balance-update', handleGemBalanceUpdate)
+    
+    return () => {
+      window.removeEventListener('gem-balance-update', handleGemBalanceUpdate)
+    }
+  }, [user])
 
   if (isLoading) return null
 
@@ -36,16 +95,16 @@ export function SiteHeader() {
           <div className="flex items-center gap-2">
             <Badge variant="default" className="flex items-center gap-2 bg-primary/10 text-primary hover:bg-primary/20">
               <Wallet className="h-4 w-4" />
-              <span>$2,458.50</span>
+              <span>${walletBalance.toFixed(2)}</span>
             </Badge>
             <Badge variant="default" className="flex items-center gap-2 bg-violet-500/10 text-violet-500 hover:bg-violet-500/20">
               <Gem className="h-4 w-4" />
-              <span>42</span>
+              <span>{gemBalance}</span>
             </Badge>
           </div>
           <ThemeToggle />
           {!user ? (
-            <Button asChild variant="ghost\" size="sm">
+            <Button asChild variant="ghost" size="sm">
               <a href="/auth/login">
                 Login
               </a>
@@ -145,7 +204,7 @@ export function SiteHeader() {
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <a href="/user/user-profile">
+                    <a href={`/user/${user.user_metadata?.username || 'profile'}`}>
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </a>

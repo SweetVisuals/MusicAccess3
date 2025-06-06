@@ -143,6 +143,21 @@ export interface Album {
   track_ids?: string[]; // Array of track IDs in the album
 }
 
+export interface Service {
+  id: string;
+  title: string;
+  type: string;
+  description: string;
+  price: number | null;
+  delivery_time: string | null;
+  revisions: number | null;
+  is_featured: boolean;
+  is_active: boolean;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProfileWithStatsResponse {
   profile: Profile;
   stats: ProfileStats | null;

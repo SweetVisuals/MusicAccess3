@@ -1,4 +1,4 @@
-import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare, ShoppingCart } from 'lucide-react';
+import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare, ShoppingCart, Gem } from 'lucide-react';
 import { Button } from '@/components/@/ui/button';
 import { Badge } from '@/components/@/ui/badge';
 import { useAudioPlayer, type Track } from '@/contexts/audio-player-context';
@@ -9,6 +9,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/@/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/@/ui/avatar';
+import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/auth-context';
+import { toast } from 'sonner';
 
 interface ProjectCardProps {
   project: {
@@ -30,6 +34,9 @@ interface ProjectCardProps {
 
 const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
   const { currentTrack, playTrack } = useAudioPlayer();
+  const { user } = useAuth();
+  const [trackGems, setTrackGems] = useState<Record<string, number>>({});
+  
   if (variant === 'list') {
     return null; // Projects only shown in grid view
   }
@@ -39,6 +46,66 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
     name: 'Artist Name',
     avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
     tag: 'Producer'
+  };
+
+  const handleGiveGem = async (trackId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!user) {
+      toast.error("Please sign in to give gems");
+      return;
+    }
+    
+    try {
+      // First check if user has gems available
+      const { data: statsData, error: statsError } = await supabase
+        .from('user_stats')
+        .select('gems')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (statsError) throw statsError;
+      
+      if (!statsData || statsData.gems <= 0) {
+        toast.error("You don't have any gems to give");
+        return;
+      }
+      
+      // Deduct gem from user
+      const { error: updateError } = await supabase
+        .from('user_stats')
+        .update({ gems: statsData.gems - 1 })
+        .eq('user_id', user.id);
+      
+      if (updateError) throw updateError;
+      
+      // Record the gem in analytics
+      const { error: analyticsError } = await supabase
+        .from('analytics')
+        .insert([{
+          event_type: 'gem_given',
+          user_id: user.id,
+          track_id: trackId,
+          data: { project_id: project.id }
+        }]);
+      
+      if (analyticsError) throw analyticsError;
+      
+      // Update local state
+      setTrackGems(prev => ({
+        ...prev,
+        [trackId]: (prev[trackId] || 0) + 1
+      }));
+      
+      // Trigger a custom event to update the gem count in the header
+      window.dispatchEvent(new CustomEvent('gem-balance-update'));
+      
+      toast.success("Gem given successfully!");
+    } catch (error) {
+      console.error('Error giving gem:', error);
+      toast.error("Failed to give gem");
+    }
   };
 
   return (
@@ -63,46 +130,61 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
         <div className="border-t pt-3">
           <div className="max-h-40 overflow-y-auto space-y-0.5 bg-background/50 rounded-lg p-1">
             {project.tracks?.slice(0, 10).map((track) => (
-              <button
-                key={track.id}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  playTrack({
-                    ...track,
-                    projectTitle: project.title,
-                    artworkUrl: project.artworkUrl
-                  });
-                  // Scroll to bottom to ensure player is visible
-                  setTimeout(() => {
-                    window.scrollTo({
-                      top: document.body.scrollHeight,
-                      behavior: 'smooth'
-                    });
-                  }, 100);
-                }}
-                onPointerDown={(e) => {
-                  // Prevent drag events from interfering with clicks
-                  if (e.pointerType === 'mouse') {
+              <div key={track.id} className="flex items-center">
+                <button
+                  onClick={(e) => {
                     e.preventDefault();
-                  }
-                }}
-                draggable={false}
-                onDragStart={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-md transition-all duration-200 ease-in-out group/track text-left ${
-                  currentTrack?.id === track.id 
-                    ? 'bg-black text-white font-medium shadow-lg' 
-                    : 'hover:bg-black/90 hover:text-white hover:shadow-sm text-foreground/90'
-                }`}
-              >
-                <span className={`text-xs tabular-nums w-8 ${currentTrack?.id === track.id ? 'text-white/90' : 'text-muted-foreground/75 group-hover/track:text-white/90'}`}>{track.duration}</span>
-                <span className="truncate text-sm group-hover/track:text-white transition-colors">
-                  {track.title}
-                </span>
-              </button>
+                    e.stopPropagation();
+                    playTrack({
+                      ...track,
+                      projectTitle: project.title,
+                      artworkUrl: project.artworkUrl
+                    });
+                    // Scroll to bottom to ensure player is visible
+                    setTimeout(() => {
+                      window.scrollTo({
+                        top: document.body.scrollHeight,
+                        behavior: 'smooth'
+                      });
+                    }, 100);
+                  }}
+                  onPointerDown={(e) => {
+                    // Prevent drag events from interfering with clicks
+                    if (e.pointerType === 'mouse') {
+                      e.preventDefault();
+                    }
+                  }}
+                  draggable={false}
+                  onDragStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  className={`flex-1 flex items-center gap-3 px-2.5 py-2 rounded-md transition-all duration-200 ease-in-out group/track text-left ${
+                    currentTrack?.id === track.id 
+                      ? 'bg-black text-white font-medium shadow-lg' 
+                      : 'hover:bg-black/90 hover:text-white hover:shadow-sm text-foreground/90'
+                  }`}
+                >
+                  <span className={`text-xs tabular-nums w-8 ${currentTrack?.id === track.id ? 'text-white/90' : 'text-muted-foreground/75 group-hover/track:text-white/90'}`}>{track.duration}</span>
+                  <span className="truncate text-sm group-hover/track:text-white transition-colors">
+                    {track.title}
+                  </span>
+                </button>
+                
+                {/* Gem button */}
+                <button
+                  onClick={(e) => handleGiveGem(track.id, e)}
+                  className="ml-1 p-1.5 rounded-full hover:bg-primary/10 transition-colors"
+                  title="Give a gem"
+                >
+                  <Gem className="h-4 w-4 text-violet-500 hover:text-violet-400 transition-colors" />
+                  {(trackGems[track.id] || 0) > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-violet-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                      {trackGems[track.id]}
+                    </span>
+                  )}
+                </button>
+              </div>
             ))}
           </div>
         </div>
