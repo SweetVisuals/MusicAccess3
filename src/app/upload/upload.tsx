@@ -24,7 +24,8 @@ import {
   Video,
   Settings,
   HelpCircle,
-  Info
+  Info,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -40,6 +41,8 @@ export default function FileManager() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<FileItem[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
+  const MAX_UPLOAD_FILES = 10;
   
   const {
     files,
@@ -61,8 +64,25 @@ export default function FileManager() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
+    // Check if too many files are selected
+    if (e.target.files.length > MAX_UPLOAD_FILES) {
+      toast({
+        title: "Too many files",
+        description: `You can upload a maximum of ${MAX_UPLOAD_FILES} files at once`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsUploading(true);
     setUploadProgress(0);
+    
+    // Initialize uploading files array
+    const filesArray = Array.from(e.target.files).map(file => ({
+      name: file.name,
+      progress: 0
+    }));
+    setUploadingFiles(filesArray);
     
     try {
       const files = Array.from(e.target.files);
@@ -70,17 +90,26 @@ export default function FileManager() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        await uploadFile(file, undefined, (progress) => {
-          setUploadProgress(progress);
-        });
+        // Update overall progress
+        setUploadProgress(Math.round((i / files.length) * 100));
         
-        // Update progress for multiple files
-        setUploadProgress(((i + 1) / files.length) * 100);
+        // Upload with individual file progress tracking
+        await uploadFile(file, undefined, (progress) => {
+          // Update individual file progress
+          setUploadingFiles(prev => {
+            const newFiles = [...prev];
+            newFiles[i] = { ...newFiles[i], progress };
+            return newFiles;
+          });
+        });
       }
+      
+      // Set final progress to 100%
+      setUploadProgress(100);
       
       toast({
         title: "Upload complete",
-        description: "Your files have been uploaded successfully!",
+        description: `Successfully uploaded ${files.length} file${files.length > 1 ? 's' : ''}`,
       });
       
       // Refresh files
@@ -93,10 +122,13 @@ export default function FileManager() {
         variant: "destructive"
       });
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      // Clear the input value so the same file can be uploaded again
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setUploadingFiles([]);
+        // Clear the input value so the same file can be uploaded again
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }, 1000); // Keep progress visible briefly after completion
     }
   };
 
@@ -308,10 +340,37 @@ export default function FileManager() {
       {isUploading && (
         <div className="p-4 bg-muted/20 border-b">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Uploading files...</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Uploading files...</span>
+              {uploadingFiles.length > 1 && (
+                <span className="text-xs text-muted-foreground">
+                  ({uploadingFiles.length} files)
+                </span>
+              )}
+            </div>
             <span className="text-sm">{Math.round(uploadProgress)}%</span>
           </div>
           <Progress value={uploadProgress} className="h-2" />
+          
+          {/* Individual file progress */}
+          {uploadingFiles.length > 1 && (
+            <div className="mt-4 max-w-3xl">
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {uploadingFiles.map((file, index) => (
+                  <div key={index} className="text-left">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="truncate max-w-[80%]">{file.name}</span>
+                      <span>{Math.round(file.progress)}%</span>
+                    </div>
+                    <Progress 
+                      value={file.progress} 
+                      className="h-1 bg-muted/50" 
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -342,7 +401,7 @@ export default function FileManager() {
           <div className="space-y-4 py-4">
             <h3 className="font-medium text-lg">File Browser Features</h3>
             <div className="space-y-2">
-              <p className="text-sm"><strong>Uploading Files:</strong> Drag and drop files into the upload area or click "Upload Files" button.</p>
+              <p className="text-sm"><strong>Uploading Files:</strong> Drag and drop files into the upload area or click "Upload Files" button. Maximum {MAX_UPLOAD_FILES} files at once.</p>
               <p className="text-sm"><strong>Creating Folders:</strong> Click "New Folder" button to create a new folder.</p>
               <p className="text-sm"><strong>Navigating:</strong> Click on folders in the sidebar to navigate between folders.</p>
               <p className="text-sm"><strong>File Operations:</strong> Right-click or use the menu button on files/folders for options like rename, delete, etc.</p>

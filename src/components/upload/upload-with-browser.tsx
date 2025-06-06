@@ -14,7 +14,8 @@ import {
   Edit,
   Star,
   Download,
-  MoreHorizontal
+  MoreHorizontal,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '../@/ui/button';
 import { Input } from '../@/ui/input';
@@ -37,6 +38,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../@/ui/dropdown-menu';
+import { Progress } from '../@/ui/progress';
 import { FileItem } from '@/lib/types';
 
 interface UnifiedFileBrowserProps {
@@ -65,6 +67,8 @@ export function UnifiedFileBrowser({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
+  const MAX_UPLOAD_FILES = 10;
 
   // Load folders from database on mount
   useEffect(() => {
@@ -273,23 +277,54 @@ export function UnifiedFileBrowser({
   };
 
   const handleFileUpload = async () => {
+    const files = fileInputRef.current?.files;
+    if (!files || files.length === 0) return;
+    
+    // Check if too many files are selected
+    if (files.length > MAX_UPLOAD_FILES) {
+      toast({
+        title: "Too many files",
+        description: `You can upload a maximum of ${MAX_UPLOAD_FILES} files at once`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsUploading(true);
     setUploadProgress(0);
     
-    const files = fileInputRef.current?.files;
-    if (!files || files.length === 0) return;
+    // Initialize uploading files array
+    const filesArray = Array.from(files).map(file => ({
+      name: file.name,
+      progress: 0
+    }));
+    setUploadingFiles(filesArray);
 
     try {
-      // Get the uploadFile function from props
-      for (const file of Array.from(files)) {
-        await uploadFile(file, selectedFolder || undefined, (progress: number) => {
-          setUploadProgress(progress);
+      // Process each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Update overall progress
+        setUploadProgress(Math.round((i / files.length) * 100));
+        
+        // Upload the file with progress tracking
+        await uploadFile(file, selectedFolder || undefined, (progress) => {
+          // Update individual file progress
+          setUploadingFiles(prev => {
+            const newFiles = [...prev];
+            newFiles[i] = { ...newFiles[i], progress };
+            return newFiles;
+          });
         });
       }
 
+      // Set final progress to 100%
+      setUploadProgress(100);
+      
       toast({
         title: "Upload complete",
-        description: "Your files have been uploaded successfully!",
+        description: `Successfully uploaded ${files.length} file${files.length > 1 ? 's' : ''}`,
       });
       
       // Refresh the file list
@@ -303,9 +338,12 @@ export function UnifiedFileBrowser({
         variant: "destructive"
       });
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setUploadingFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }, 1000); // Keep progress visible briefly after completion
     }
   };
 
@@ -319,18 +357,28 @@ export function UnifiedFileBrowser({
     e.stopPropagation();
     
     const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles.length > 0) {
-      // Set the files to the file input and trigger upload
-      if (fileInputRef.current) {
-        // Note: This is a hack as we can't directly set files property
-        // Create a DataTransfer object to set files
-        const dataTransfer = new DataTransfer();
-        for (let i = 0; i < droppedFiles.length; i++) {
-          dataTransfer.items.add(droppedFiles[i]);
-        }
-        fileInputRef.current.files = dataTransfer.files;
-        handleFileUpload();
+    if (!droppedFiles || droppedFiles.length === 0) return;
+    
+    // Check if too many files are dropped
+    if (droppedFiles.length > MAX_UPLOAD_FILES) {
+      toast({
+        title: "Too many files",
+        description: `You can upload a maximum of ${MAX_UPLOAD_FILES} files at once`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Set the files to the file input and trigger upload
+    if (fileInputRef.current) {
+      // Note: This is a hack as we can't directly set files property
+      // Create a DataTransfer object to set files
+      const dataTransfer = new DataTransfer();
+      for (let i = 0; i < droppedFiles.length; i++) {
+        dataTransfer.items.add(droppedFiles[i]);
       }
+      fileInputRef.current.files = dataTransfer.files;
+      handleFileUpload();
     }
   };
 
@@ -773,13 +821,34 @@ export function UnifiedFileBrowser({
             {isUploading ? (
               <div className="space-y-4">
                 <p className="text-muted-foreground">Uploading...</p>
-                <div className="relative h-2 max-w-md mx-auto rounded-full bg-gray-200 overflow-hidden">
-                  <div 
-                    className="absolute top-0 left-0 h-full rounded-full" 
-                    style={{ width: `${uploadProgress}%`, backgroundColor: '#3b82f6' }}
+                <div className="relative max-w-md mx-auto">
+                  <Progress 
+                    value={uploadProgress} 
+                    className="h-2 bg-muted" 
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">{Math.round(uploadProgress)}%</p>
+                
+                {/* Individual file progress */}
+                {uploadingFiles.length > 1 && (
+                  <div className="mt-4 max-w-md mx-auto">
+                    <h4 className="text-sm font-medium text-left mb-2">Files ({uploadingFiles.length})</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {uploadingFiles.map((file, index) => (
+                        <div key={index} className="text-left">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="truncate max-w-[80%]">{file.name}</span>
+                            <span>{Math.round(file.progress)}%</span>
+                          </div>
+                          <Progress 
+                            value={file.progress} 
+                            className="h-1 bg-muted/50" 
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -789,6 +858,9 @@ export function UnifiedFileBrowser({
                   <Button variant="link" className="p-0 h-auto" onClick={handleUploadClick}>
                     browse
                   </Button>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Maximum {MAX_UPLOAD_FILES} files at once
                 </p>
               </div>
             )}
