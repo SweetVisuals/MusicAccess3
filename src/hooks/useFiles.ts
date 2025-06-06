@@ -80,7 +80,7 @@ export function useFiles(userId: string) {
       if (folderId) {
         query = query.eq('folder_id', folderId);
       } else {
-        query = query.or('folder_id.is.null, folder_id.eq.' + folderId);
+        query = query.is('folder_id', null);
       }
       
       const { data: fileData, error: fileError } = await query.order('created_at', { ascending: false });
