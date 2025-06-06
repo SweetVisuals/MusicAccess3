@@ -43,26 +43,13 @@ import { FileItem } from '@/lib/types';
 
 interface UnifiedFileBrowserProps {
   initialFiles?: FileItem[];
-  files: FileItem[];
-  folders: FileItem[];
-  onUpload: () => void;
-  onCreateFolder: () => void;
-  uploadFile: (
-    file: File, 
-    folderId?: string, 
-    onProgress?: (progress: number) => void
-  ) => Promise<{ success: boolean }>;
 }
 
 export function UnifiedFileBrowser({ 
-  initialFiles,
-  files,
-  folders: initialFolders,
-  onUpload,
-  onCreateFolder,
-  uploadFile
+  initialFiles
 }: UnifiedFileBrowserProps) {
   const { user } = useAuth();
+  const [files, setFiles] = useState<FileItem[]>(initialFiles || []);
   const [folders, setFolders] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -330,9 +317,7 @@ export function UnifiedFileBrowser({
       });
       
       // Refresh the file list
-      if (typeof onUpload === 'function') {
-        onUpload();
-      }
+      fetchFiles();
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -384,16 +369,6 @@ export function UnifiedFileBrowser({
     }
   };
 
-  const confirmDeleteItem = (id: string, isFolder: boolean, name: string, filePath?: string) => {
-    setItemToDelete({
-      id,
-      name,
-      isFolder,
-      filePath
-    });
-    setShowDeleteConfirmDialog(true);
-  };
-
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     
@@ -439,22 +414,15 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state immediately
+        // Update local state
         setFilteredFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
-        
-        // Call onUpload to refresh the file list from the parent component
-        if (typeof onUpload === 'function') {
-          onUpload();
-        }
+        setFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
       }
       
       toast({
         title: "Deleted successfully",
         description: `${itemToDelete.isFolder ? 'Folder' : 'File'} has been deleted`,
       });
-      
-      setShowDeleteConfirmDialog(false);
-      setItemToDelete(null);
     } catch (error) {
       console.error('Delete error:', error);
       toast({
@@ -462,6 +430,9 @@ export function UnifiedFileBrowser({
         description: error instanceof Error ? error.message : "Failed to delete item",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteConfirmDialog(false);
+      setItemToDelete(null);
     }
   };
 
@@ -548,6 +519,145 @@ export function UnifiedFileBrowser({
       description: `Downloading ${file.name}`
     });
   };
+
+  // Function to upload a file
+  const uploadFile = async (
+    file: File, 
+    folderId?: string, 
+    onProgress?: (progress: number) => void
+  ) => {
+    try {
+      if (!user?.id) throw new Error("User not authenticated");
+      
+      // Generate unique file path
+      const fileId = uuidv4();
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${fileId}.${fileExt}`;
+      
+      // Upload to Supabase Storage
+      const { error } = await supabase.storage
+        .from('audio_files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        
+      // Simulate progress updates
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += 10;
+        if (progress >= 100) {
+          clearInterval(progressInterval);
+        }
+        if (onProgress) onProgress(progress);
+      }, 300);
+      
+      if (error) throw error;
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('audio_files')
+        .getPublicUrl(filePath);
+      
+      // Add file record to database
+      const { error: dbError } = await supabase
+        .from('files')
+        .insert([{
+          id: fileId,
+          name: file.name,
+          file_url: publicUrl,
+          file_path: filePath,
+          size: file.size,
+          file_type: getFileType(file.type),
+          user_id: user.id,
+          folder_id: folderId || null
+        }]);
+      
+      if (dbError) throw dbError;
+      
+      return { success: true, fileId, url: publicUrl };
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw error;
+    }
+  };
+
+  // Function to get files for the current folder
+  const fetchFiles = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setIsLoading(true);
+      
+      let query = supabase
+        .from('files')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (selectedFolder) {
+        query = query.eq('folder_id', selectedFolder);
+      } else {
+        // Only fetch files with null folder_id (root files)
+        query = query.is('folder_id', null);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      const formattedFiles: FileItem[] = data.map(file => ({
+        id: file.id,
+        name: file.name,
+        type: file.file_type || 'file',
+        size: formatFileSize(file.size),
+        modified: file.updated_at ? new Date(file.updated_at).toISOString().split('T')[0] : 
+                 new Date(file.created_at).toISOString().split('T')[0],
+        audio_url: file.file_url,
+        file_path: file.file_path,
+        folder_id: file.folder_id,
+        starred: file.starred
+      }));
+      
+      setFiles(formattedFiles);
+      setFilteredFiles(formattedFiles);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load files",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper function to format file size
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  // Helper function to determine file type from MIME type
+  function getFileType(mimeType: string): string {
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.includes('pdf')) return 'document';
+    return 'file';
+  }
+
+  // Initialize by fetching files
+  useEffect(() => {
+    if (user?.id) {
+      fetchFiles();
+    }
+  }, [user?.id, selectedFolder]);
 
   // Function to get files for the selected folder
   const getFilesForSelectedFolder = () => {
@@ -692,7 +802,14 @@ export function UnifiedFileBrowser({
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-red-500"
-                          onClick={() => confirmDeleteItem(folder.id, true, folder.name)}
+                          onClick={() => {
+                            setItemToDelete({
+                              id: folder.id,
+                              name: folder.name,
+                              isFolder: true
+                            });
+                            setShowDeleteConfirmDialog(true);
+                          }}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
@@ -767,7 +884,14 @@ export function UnifiedFileBrowser({
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               className="text-red-500"
-                              onClick={() => confirmDeleteItem(subfolder.id, true, subfolder.name)}
+                              onClick={() => {
+                                setItemToDelete({
+                                  id: subfolder.id,
+                                  name: subfolder.name,
+                                  isFolder: true
+                                });
+                                setShowDeleteConfirmDialog(true);
+                              }}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
@@ -962,7 +1086,13 @@ export function UnifiedFileBrowser({
                         className="text-red-500"
                         onClick={(e) => {
                           e.stopPropagation();
-                          confirmDeleteItem(file.id, false, file.name, file.file_path);
+                          setItemToDelete({
+                            id: file.id,
+                            name: file.name,
+                            isFolder: false,
+                            filePath: file.file_path
+                          });
+                          setShowDeleteConfirmDialog(true);
                         }}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -1055,16 +1185,21 @@ export function UnifiedFileBrowser({
       <Dialog open={showDeleteConfirmDialog} onOpenChange={setShowDeleteConfirmDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              Confirm Deletion
+            </DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p>Are you sure you want to delete "{itemToDelete?.name}"?</p>
+            <p>Are you sure you want to delete <strong>{itemToDelete?.name}</strong>?</p>
             {itemToDelete?.isFolder && (
-              <p className="mt-2 text-sm text-destructive flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                This will also delete all files inside this folder.
+              <p className="text-sm text-destructive mt-2">
+                This will also delete all files and subfolders inside this folder.
               </p>
             )}
+            <p className="text-sm text-muted-foreground mt-2">
+              This action cannot be undone.
+            </p>
           </div>
           <DialogFooter>
             <Button 
@@ -1078,6 +1213,7 @@ export function UnifiedFileBrowser({
               Cancel
             </Button>
             <Button 
+              type="button" 
               variant="destructive"
               onClick={handleDeleteItem}
             >
