@@ -76,6 +76,7 @@ export function UnifiedFileBrowser({
   const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showAllFiles, setShowAllFiles] = useState(true);
   const MAX_UPLOAD_FILES = 10;
   
   // Filter files based on search query and selected folder
@@ -89,16 +90,18 @@ export function UnifiedFileBrowser({
       );
     }
     
-    // Filter by selected folder
-    if (selectedFolder !== null) {
-      result = result.filter(file => file.folder_id === selectedFolder);
-    } else {
-      // In root folder, show only files with no folder_id
-      result = result.filter(file => file.folder_id === null);
+    // If not showing all files, filter by selected folder
+    if (!showAllFiles) {
+      if (selectedFolder !== null) {
+        result = result.filter(file => file.folder_id === selectedFolder);
+      } else {
+        // In root folder, show only files with no folder_id
+        result = result.filter(file => file.folder_id === null);
+      }
     }
     
     return result;
-  }, [files, searchQuery, selectedFolder]);
+  }, [files, searchQuery, selectedFolder, showAllFiles]);
 
   useEffect(() => {
     // Expand folders that contain the selected folder
@@ -522,6 +525,29 @@ export function UnifiedFileBrowser({
       })
     }));
 
+    // Get folder name for the file if it has a folder_id
+    const folderName = useMemo(() => {
+      if (!file.folder_id) return null;
+      
+      // Find the folder in the flat list
+      const findFolderName = (folderId: string, folderList: FileItem[]): string | null => {
+        for (const folder of folderList) {
+          if (folder.id === folderId) {
+            return folder.name;
+          }
+          
+          if (folder.children) {
+            const childResult = findFolderName(folderId, folder.children);
+            if (childResult) return childResult;
+          }
+        }
+        
+        return null;
+      };
+      
+      return findFolderName(file.folder_id, folders);
+    }, [file.folder_id, folders]);
+
     return (
       <div 
         ref={drag}
@@ -544,10 +570,18 @@ export function UnifiedFileBrowser({
               <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{file.size}</span>
-            <span>•</span>
-            <span className="truncate">{file.modified}</span>
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>{file.size}</span>
+              <span>•</span>
+              <span className="truncate">{file.modified}</span>
+            </div>
+            {folderName && showAllFiles && (
+              <div className="flex items-center gap-1">
+                <Folder className="h-3 w-3" />
+                <span className="truncate">{folderName}</span>
+              </div>
+            )}
           </div>
         </div>
         
@@ -795,6 +829,31 @@ export function UnifiedFileBrowser({
             </Button>
           </div>
 
+          <div className="flex items-center justify-between">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              className={cn(
+                "text-xs",
+                showAllFiles ? "text-primary font-medium" : "text-muted-foreground"
+              )}
+              onClick={() => setShowAllFiles(true)}
+            >
+              Show All Files
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              className={cn(
+                "text-xs",
+                !showAllFiles ? "text-primary font-medium" : "text-muted-foreground"
+              )}
+              onClick={() => setShowAllFiles(false)}
+            >
+              Filter by Folder
+            </Button>
+          </div>
+
           <Separator />
 
           <div className="space-y-2">
@@ -851,13 +910,19 @@ export function UnifiedFileBrowser({
 
         {/* Main file browser area */}
         <div className="flex-1 flex flex-col">
-          <div className="p-4 border-b">
+          <div className="p-4 border-b flex items-center justify-between">
             <h1 className="text-2xl font-bold">
-              {selectedFolder ? 
-                folders.find(f => f.id === selectedFolder)?.name || 'Files' : 
-                'All Files'
-              }
+              {showAllFiles ? 'All Files' : (
+                selectedFolder ? 
+                  folders.find(f => f.id === selectedFolder)?.name || 'Files' : 
+                  'Root Files'
+              )}
             </h1>
+            {showAllFiles && selectedFolder && (
+              <div className="text-sm text-muted-foreground">
+                Showing all files. Selected folder: {folders.find(f => f.id === selectedFolder)?.name}
+              </div>
+            )}
           </div>
 
           <div
