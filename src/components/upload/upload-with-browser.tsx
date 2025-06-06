@@ -514,7 +514,8 @@ export function UnifiedFileBrowser({
       title: file.name,
       duration: "0:00", // We don't have actual duration info
       artworkUrl: "https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg", // Default artwork
-      projectTitle: folderName
+      projectTitle: folderName,
+      audioUrl: file.audio_url // Add the missing audioUrl property
     };
     
     // Play the track
