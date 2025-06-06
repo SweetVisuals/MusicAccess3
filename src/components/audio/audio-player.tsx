@@ -13,7 +13,7 @@ export function AudioPlayer() {
           {currentTrack && (
             <div className="flex items-center gap-3 min-w-0 w-[200px]">
               {currentTrack.artworkUrl && (
-                <div className="w-10 h-10 rounded-md bg-muted overflow-hidden">
+                <div className="w-10 h-10 rounded-md bg-muted overflow-hidden flex-shrink-0">
                   <img 
                     src={currentTrack.artworkUrl} 
                     alt={currentTrack.title}
@@ -21,7 +21,7 @@ export function AudioPlayer() {
                   />
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{currentTrack.title}</p>
                 {currentTrack.projectTitle && (
                   <p className="text-xs text-muted-foreground truncate">

@@ -79,16 +79,20 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
                   e.preventDefault();
                   e.stopPropagation();
                 }}
-                className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-md transition-all duration-200 ease-in-out group/track text-left ${
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md transition-all duration-200 ease-in-out group/track text-left ${
                   currentTrack?.id === track.id 
                     ? 'bg-black text-white font-medium shadow-lg' 
                     : 'hover:bg-black/90 hover:text-white hover:shadow-sm text-foreground/90'
                 }`}
               >
-                <span className={`text-xs tabular-nums w-8 ${currentTrack?.id === track.id ? 'text-white/90' : 'text-muted-foreground/75 group-hover/track:text-white/90'}`}>{track.duration}</span>
-                <span className="truncate text-sm group-hover/track:text-white transition-colors">
-                  {track.title}
-                </span>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className={`text-xs tabular-nums ${currentTrack?.id === track.id ? 'text-white/90' : 'text-muted-foreground/75 group-hover/track:text-white/90'}`}>
+                    {track.duration}
+                  </span>
+                  <span className="truncate text-sm group-hover/track:text-white transition-colors">
+                    {track.title}
+                  </span>
+                </div>
               </button>
             ))}
           </div>

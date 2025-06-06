@@ -15,7 +15,8 @@ import {
   Star,
   Download,
   MoreHorizontal,
-  AlertCircle
+  AlertCircle,
+  Music
 } from 'lucide-react';
 import { Button } from '../@/ui/button';
 import { Input } from '../@/ui/input';
@@ -41,6 +42,18 @@ import {
 import { Progress } from '../@/ui/progress';
 import { FileItem } from '@/lib/types';
 
+// Define drag item types
+const ItemTypes = {
+  FILE: 'file',
+  FOLDER: 'folder'
+};
+
+interface DragItem {
+  id: string;
+  type: string;
+  isFolder: boolean;
+}
+
 interface UnifiedFileBrowserProps {
   initialFiles?: FileItem[];
   files: FileItem[];
@@ -55,7 +68,6 @@ interface UnifiedFileBrowserProps {
 }
 
 export function UnifiedFileBrowser({ 
-  initialFiles,
   files,
   folders: initialFolders,
   onUpload,
@@ -74,29 +86,9 @@ export function UnifiedFileBrowser({
   useEffect(() => {
     if (!user?.id) return;
     
-    const loadFolders = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('folders')
-          .select('*')
-          .eq('user_id', user.id);
-        
-        if (error) throw error;
-        
-        setFolders(data || []);
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to load folders",
-          variant: "destructive"
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadFolders();
-  }, [user?.id]);
+    setFolders(initialFolders || []);
+    setIsLoading(false);
+  }, [user?.id, initialFolders]);
 
   // Filter files based on search query
   useEffect(() => {
@@ -145,26 +137,11 @@ export function UnifiedFileBrowser({
         parent_id: selectedFolder || null
       };
       
-      // Save to database
-      const { data, error } = await supabase
-        .from('folders')
-        .insert(newFolder)
-        .select()
-        .single();
+      // Call the onCreateFolder function
+      if (typeof onCreateFolder === 'function') {
+        onCreateFolder();
+      }
       
-      if (error) throw error;
-      
-      // Create UI folder object
-      const uiFolder: FileItem = {
-        id: data.id,
-        name: newFolderName.trim(),
-        type: 'folder',
-        modified: new Date().toISOString().split('T')[0],
-        children: []
-      };
-      
-      // Update local folders state
-      setFolders(prev => [...prev, uiFolder]);
       setNewFolderName('');
       setShowNewFolderDialog(false);
       
@@ -547,6 +524,235 @@ export function UnifiedFileBrowser({
     });
   };
 
+  // Draggable File Component
+  const DraggableFile = ({ file }: { file: FileItem }) => {
+    const [{ isDragging }, drag] = useDrag(() => ({
+      type: ItemTypes.FILE,
+      item: { id: file.id, type: 'file', isFolder: false },
+      collect: (monitor) => ({
+        isDragging: !!monitor.isDragging(),
+      }),
+    }));
+
+    return (
+      <div 
+        ref={drag}
+        key={file.id} 
+        className={cn(
+          "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
+          isDragging ? "opacity-50" : "",
+          selectedItems.includes(file.id) 
+            ? "bg-primary/10 border-primary" 
+            : "hover:shadow-md hover:bg-primary/5"
+        )}
+        onClick={() => toggleItemSelection(file.id)}
+      >
+        <div className="p-2 bg-primary/10 rounded-md">
+          <Music className="h-5 w-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <p className="font-medium truncate">{file.name}</p>
+            {file.starred && (
+              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{file.size}</span>
+            <span>•</span>
+            <span className="truncate">{file.modified}</span>
+          </div>
+        </div>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
+              handleDownloadFile(file);
+            }}>
+              <Download className="h-4 w-4 mr-2" />
+              Download
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
+              setItemToRename({
+                id: file.id,
+                name: file.name,
+                isFolder: false
+              });
+              setNewFileName(file.name);
+              setShowRenameDialog(true);
+            }}>
+              <Edit className="h-4 w-4 mr-2" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
+              handleToggleStar(file.id, false, !!file.starred);
+            }}>
+              <Star className={cn(
+                "h-4 w-4 mr-2",
+                file.starred && "fill-yellow-400 text-yellow-400"
+              )} />
+              {file.starred ? 'Unstar' : 'Star'}
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              className="text-red-500"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteItem(file.id, false, file.file_path);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  };
+
+  // Droppable Folder Component
+  const DroppableFolder = ({ folder, level = 0 }: { folder: FileItem, level?: number }) => {
+    const [{ isOver }, drop] = useDrop(() => ({
+      accept: ItemTypes.FILE,
+      drop: (item: DragItem) => handleFileDrop(item, folder.id),
+      collect: (monitor) => ({
+        isOver: !!monitor.isOver(),
+      }),
+    }));
+
+    // Handle file drop into folder
+    const handleFileDrop = async (item: DragItem, targetFolderId: string) => {
+      if (item.isFolder) return; // Don't handle folder drops for now
+      
+      try {
+        // Update file's folder_id in database
+        const { error } = await supabase
+          .from('files')
+          .update({ folder_id: targetFolderId })
+          .eq('id', item.id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFilteredFiles(prev => 
+          prev.map(file => 
+            file.id === item.id 
+              ? { ...file, folder_id: targetFolderId } 
+              : file
+          )
+        );
+        
+        toast({
+          title: "File moved",
+          description: "File has been moved to the selected folder",
+        });
+      } catch (error) {
+        console.error('Error moving file:', error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to move file",
+          variant: "destructive"
+        });
+      }
+    };
+
+    return (
+      <div ref={drop} className={cn("space-y-0.5 transition-all duration-200", isOver && "bg-primary/5 rounded-md")}>
+        <div className="flex items-center">
+          <Button 
+            variant={selectedFolder === folder.id ? "secondary" : "ghost"}
+            className={cn(
+              "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md",
+              "transition-all duration-200 hover:bg-primary/10",
+              selectedFolder === folder.id && "bg-primary/15 hover:bg-primary/20",
+              level > 0 && "pl-8"
+            )}
+            onClick={() => {
+              selectFolder(folder.id);
+              if (folder.children?.length) {
+                toggleFolder(folder.id);
+              }
+            }}
+          >
+            <div className="flex items-center gap-1.5 min-w-[24px]">
+              {folder.children?.length ? (
+                <div className="transition-transform duration-200" 
+                     style={{ transform: expandedFolders[folder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                  <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                </div>
+              ) : (
+                <div className="w-4" />
+              )}
+              <Folder className={cn(
+                "h-4 w-4 flex-shrink-0",
+                selectedFolder === folder.id ? "text-primary" : "text-muted-foreground"
+              )} />
+            </div>
+            <span className="truncate">{folder.name}</span>
+          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => {
+                setItemToRename({
+                  id: folder.id,
+                  name: folder.name,
+                  isFolder: true
+                });
+                setNewFileName(folder.name);
+                setShowRenameDialog(true);
+              }}>
+                <Edit className="h-4 w-4 mr-2" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleStar(folder.id, true, !!folder.starred)}>
+                <Star className={cn(
+                  "h-4 w-4 mr-2",
+                  folder.starred && "fill-yellow-400 text-yellow-400"
+                )} />
+                {folder.starred ? 'Unstar' : 'Star'}
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-red-500"
+                onClick={() => handleDeleteItem(folder.id, true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        
+        {/* Render subfolders if expanded */}
+        <div className={cn(
+          "space-y-0.5 overflow-hidden transition-all duration-200",
+          expandedFolders[folder.id] ? "max-h-96" : "max-h-0"
+        )}>
+          {folder.children?.filter(item => item.type === 'folder').map((subfolder) => (
+            <DroppableFolder key={subfolder.id} folder={subfolder} level={level + 1} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="flex flex-1 h-full">
@@ -612,153 +818,7 @@ export function UnifiedFileBrowser({
             </h3>
             <div className="space-y-0.5 max-h-[300px] overflow-y-auto pr-1">
               {folders.map((folder) => (
-                <div key={folder.id} className="space-y-0.5 transition-all duration-200">
-                  <div className="flex items-center">
-                    <Button 
-                      variant={selectedFolder === folder.id ? "secondary" : "ghost"}
-                      className={cn(
-                        "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md",
-                        "transition-all duration-200 hover:bg-primary/10",
-                        selectedFolder === folder.id && "bg-primary/15 hover:bg-primary/20"
-                      )}
-                      onClick={() => {
-                        selectFolder(folder.id);
-                        if (folder.children?.length) {
-                          toggleFolder(folder.id);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-[24px]">
-                        {folder.children?.length ? (
-                          <div className="transition-transform duration-200" 
-                               style={{ transform: expandedFolders[folder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                            <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                          </div>
-                        ) : (
-                          <div className="w-4" />
-                        )}
-                        <Folder className={cn(
-                          "h-4 w-4 flex-shrink-0",
-                          selectedFolder === folder.id ? "text-primary" : "text-muted-foreground"
-                        )} />
-                      </div>
-                      <span className="truncate">{folder.name}</span>
-                    </Button>
-                    
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => {
-                          setItemToRename({
-                            id: folder.id,
-                            name: folder.name,
-                            isFolder: true
-                          });
-                          setNewFileName(folder.name);
-                          setShowRenameDialog(true);
-                        }}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleStar(folder.id, true, !!folder.starred)}>
-                          <Star className={cn(
-                            "h-4 w-4 mr-2",
-                            folder.starred && "fill-yellow-400 text-yellow-400"
-                          )} />
-                          {folder.starred ? 'Unstar' : 'Star'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          className="text-red-500"
-                          onClick={() => handleDeleteItem(folder.id, true)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  
-                  {/* Render subfolders if expanded */}
-                  <div className={cn(
-                    "space-y-0.5 overflow-hidden transition-all duration-200",
-                    expandedFolders[folder.id] ? "max-h-96" : "max-h-0"
-                  )}>
-                    {folder.children?.filter(item => item.type === 'folder').map((subfolder) => (
-                      <div key={subfolder.id} className="flex items-center">
-                        <Button 
-                          variant={selectedFolder === subfolder.id ? "secondary" : "ghost"}
-                          className={cn(
-                            "w-full justify-start gap-2 py-1.5 h-auto text-sm pl-8 rounded-md",
-                            "transition-all duration-200 hover:bg-primary/10",
-                            selectedFolder === subfolder.id && "bg-primary/15 hover:bg-primary/20"
-                          )}
-                          onClick={() => {
-                            selectFolder(subfolder.id);
-                            if (subfolder.children?.length) {
-                              toggleFolder(subfolder.id);
-                            }
-                          }}
-                        >
-                          <div className="flex items-center gap-1.5 min-w-[24px]">
-                            {subfolder.children?.length ? (
-                              <div className="transition-transform duration-200" 
-                                   style={{ transform: expandedFolders[subfolder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                                <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                              </div>
-                            ) : (
-                              <div className="w-4" />
-                            )}
-                            <Folder className={cn(
-                              "h-4 w-4 flex-shrink-0",
-                              selectedFolder === subfolder.id ? "text-primary" : "text-muted-foreground"
-                            )} />
-                          </div>
-                          <span className="truncate">{subfolder.name}</span>
-                        </Button>
-                        
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                              setItemToRename({
-                                id: subfolder.id,
-                                name: subfolder.name,
-                                isFolder: true
-                              });
-                              setNewFileName(subfolder.name);
-                              setShowRenameDialog(true);
-                            }}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleStar(subfolder.id, true, !!subfolder.starred)}>
-                              <Star className={cn(
-                                "h-4 w-4 mr-2",
-                                subfolder.starred && "fill-yellow-400 text-yellow-400"
-                              )} />
-                              {subfolder.starred ? 'Unstar' : 'Star'}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="text-red-500"
-                              onClick={() => handleDeleteItem(subfolder.id, true)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <DroppableFolder key={folder.id} folder={folder} />
               ))}
             </div>
           </div>
@@ -784,6 +844,7 @@ export function UnifiedFileBrowser({
                         selectFolder(item.id);
                       } else {
                         // Handle file selection
+                        toggleItemSelection(item.id);
                       }
                     }}
                   >
@@ -870,88 +931,7 @@ export function UnifiedFileBrowser({
             {/* Display files for selected folder */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {getFilesForSelectedFolder().map((file) => (
-                <div 
-                  key={file.id} 
-                  className={cn(
-                    "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
-                    selectedItems.includes(file.id) 
-                      ? "bg-primary/10 border-primary" 
-                      : "hover:shadow-md hover:bg-primary/5"
-                  )}
-                  onClick={() => toggleItemSelection(file.id)}
-                >
-                  <div className="p-2 bg-primary/10 rounded-md">
-                    <FileIcon className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1">
-                      <p className="font-medium truncate">{file.name}</p>
-                      {file.starred && (
-                        <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{file.size}</span>
-                      <span>•</span>
-                      <span>{file.modified}</span>
-                    </div>
-                  </div>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadFile(file);
-                      }}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        setItemToRename({
-                          id: file.id,
-                          name: file.name,
-                          isFolder: false
-                        });
-                        setNewFileName(file.name);
-                        setShowRenameDialog(true);
-                      }}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleStar(file.id, false, !!file.starred);
-                      }}>
-                        <Star className={cn(
-                          "h-4 w-4 mr-2",
-                          file.starred && "fill-yellow-400 text-yellow-400"
-                        )} />
-                        {file.starred ? 'Unstar' : 'Star'}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-red-500"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteItem(file.id, false, file.file_path);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <DraggableFile key={file.id} file={file} />
               ))}
             </div>
           </div>
