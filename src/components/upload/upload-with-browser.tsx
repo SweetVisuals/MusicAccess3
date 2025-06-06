@@ -41,13 +41,26 @@ import {
 } from '../@/ui/dropdown-menu';
 import { Progress } from '../@/ui/progress';
 import { FileItem } from '@/lib/types';
-import { useFiles } from '@/hooks/useFiles';
 
 interface UnifiedFileBrowserProps {
-  initialFiles?: FileItem[];
+  files: FileItem[];
+  folders: FileItem[];
+  onUpload: () => void;
+  onCreateFolder: () => void;
+  uploadFile: (
+    file: File, 
+    folderId?: string | null, 
+    onProgress?: (progress: number) => void
+  ) => Promise<{ success: boolean }>;
 }
 
-export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
+export function UnifiedFileBrowser({ 
+  files,
+  folders,
+  onUpload,
+  onCreateFolder,
+  uploadFile
+}: UnifiedFileBrowserProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,35 +78,67 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const MAX_UPLOAD_FILES = 10;
   
-  // Use the custom hook to manage files and folders
-  const { 
-    files, 
-    folders, 
-    loading, 
-    error, 
-    fetchFiles, 
-    fetchFolders, 
-    createFolder, 
-    uploadFile, 
-    deleteFile, 
-    deleteFolder,
-    moveFile
-  } = useFiles(user?.id || '');
-
-  // Filter files based on search query
-  const filteredFiles = searchQuery.trim() 
-    ? files.filter(file => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : files;
+  // Filter files based on search query and selected folder
+  const filteredFiles = useMemo(() => {
+    let result = files;
+    
+    // Filter by search query if provided
+    if (searchQuery.trim()) {
+      result = result.filter(file => 
+        file.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Filter by selected folder
+    if (selectedFolder !== null) {
+      result = result.filter(file => file.folder_id === selectedFolder);
+    } else {
+      // In root folder, show only files with no folder_id
+      result = result.filter(file => file.folder_id === null);
+    }
+    
+    return result;
+  }, [files, searchQuery, selectedFolder]);
 
   useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error",
-        description: error,
-        variant: "destructive"
-      });
+    // Expand folders that contain the selected folder
+    if (selectedFolder) {
+      const findParentFolders = (folderId: string, allFolders: FileItem[]): string[] => {
+        for (const folder of allFolders) {
+          if (folder.id === folderId) {
+            return [];
+          }
+          
+          if (folder.children) {
+            for (const child of folder.children) {
+              if (child.id === folderId) {
+                return [folder.id];
+              }
+              
+              if (child.type === 'folder') {
+                const parentFolders = findParentFolders(folderId, [child]);
+                if (parentFolders.length > 0) {
+                  return [folder.id, ...parentFolders];
+                }
+              }
+            }
+          }
+        }
+        
+        return [];
+      };
+      
+      const parentFolders = findParentFolders(selectedFolder, folders);
+      
+      if (parentFolders.length > 0) {
+        const newExpandedFolders = { ...expandedFolders };
+        parentFolders.forEach(id => {
+          newExpandedFolders[id] = true;
+        });
+        setExpandedFolders(newExpandedFolders);
+      }
     }
-  }, [error, toast]);
+  }, [selectedFolder, folders]);
 
   const handleNewFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,15 +152,35 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
       return;
     }
     
-    const result = await createFolder(newFolderName.trim(), selectedFolder);
-    
-    if (result.success) {
+    try {
+      // Create new folder
+      const { error } = await supabase
+        .from('folders')
+        .insert([{ 
+          id: uuidv4(),
+          name: newFolderName.trim(), 
+          user_id: user?.id,
+          parent_id: selectedFolder || null
+        }]);
+      
+      if (error) throw error;
+      
       setNewFolderName('');
       setShowNewFolderDialog(false);
       
       toast({
         title: "Folder created",
         description: `Folder "${newFolderName.trim()}" was created successfully`,
+      });
+      
+      // Refresh folders
+      onCreateFolder();
+    } catch (error) {
+      console.error('Folder creation error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create folder",
+        variant: "destructive"
       });
     }
   };
@@ -143,7 +208,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
         if (error) throw error;
         
         // Refresh folders
-        fetchFolders();
+        onCreateFolder();
       } else {
         // Rename file in database
         const { error } = await supabase
@@ -154,7 +219,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
         if (error) throw error;
         
         // Refresh files
-        fetchFiles(selectedFolder);
+        onUpload();
       }
       
       setShowRenameDialog(false);
@@ -185,8 +250,6 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
   const selectFolder = (folderId: string | null) => {
     setSelectedFolder(folderId);
     setSelectedItems([]);
-    // Fetch files for the selected folder
-    fetchFiles(folderId);
   };
 
   const handleUploadClick = () => {
@@ -194,7 +257,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
   };
 
   const handleFileUpload = async (event?: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event ? event.target.files : fileInputRef.current?.files;
+    const files = event?.target.files || fileInputRef.current?.files;
     if (!files || files.length === 0) return;
     
     // Check if too many files are selected
@@ -247,7 +310,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
       });
       
       // Refresh the file list
-      fetchFiles(selectedFolder);
+      onUpload();
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -305,11 +368,36 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
     
     try {
       if (isFolder) {
-        const result = await deleteFolder(id);
-        if (!result.success) throw new Error(result.error?.toString());
+        // Delete folder from database
+        const { error } = await supabase
+          .from('folders')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        // Refresh folders
+        onCreateFolder();
       } else {
-        const result = await deleteFile(id, filePath || '');
-        if (!result.success) throw new Error(result.error?.toString());
+        // Delete file from storage if path exists
+        if (filePath) {
+          const { error: storageError } = await supabase.storage
+            .from('audio_files')
+            .remove([filePath]);
+          
+          if (storageError) throw storageError;
+        }
+        
+        // Delete file from database
+        const { error } = await supabase
+          .from('files')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        // Refresh files
+        onUpload();
       }
       
       toast({
@@ -337,7 +425,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
         if (error) throw error;
         
         // Refresh folders
-        fetchFolders();
+        onCreateFolder();
       } else {
         const { error } = await supabase
           .from('files')
@@ -347,7 +435,7 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
         if (error) throw error;
         
         // Refresh files
-        fetchFiles(selectedFolder);
+        onUpload();
       }
       
       toast({
@@ -400,17 +488,21 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
   // File drag and drop functionality
   const handleFileDrop = async (fileId: string, targetFolderId: string | null) => {
     try {
-      const result = await moveFile(fileId, targetFolderId);
-      if (result.success) {
-        toast({
-          title: "File moved",
-          description: "File has been moved successfully"
-        });
-        // Refresh files for current folder
-        fetchFiles(selectedFolder);
-      } else {
-        throw new Error(result.error?.toString());
-      }
+      // Move file to target folder
+      const { error } = await supabase
+        .from('files')
+        .update({ folder_id: targetFolderId })
+        .eq('id', fileId);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "File moved",
+        description: "File has been moved successfully"
+      });
+      
+      // Refresh files
+      onUpload();
     } catch (error) {
       toast({
         title: "Error moving file",
@@ -418,14 +510,6 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
         variant: "destructive"
       });
     }
-  };
-
-  // Format duration from seconds to MM:SS
-  const formatDuration = (seconds: number): string => {
-    if (!seconds || isNaN(seconds)) return "00:00";
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   // Draggable File Component
@@ -648,16 +732,18 @@ export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
       <div 
         ref={drop}
         className={cn(
-          "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
-          "transition-all duration-200 hover:bg-primary/10",
-          selectedFolder === null && "bg-primary/15 hover:bg-primary/20",
-          isOver && "bg-primary/20"
+          "transition-all duration-200",
+          isOver && "bg-primary/10 rounded-md"
         )}
-        onClick={() => selectFolder(null)}
       >
         <Button 
           variant={selectedFolder === null ? "secondary" : "ghost"}
-          className="w-full justify-start gap-2"
+          className={cn(
+            "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
+            "transition-all duration-200 hover:bg-primary/10",
+            selectedFolder === null && "bg-primary/15 hover:bg-primary/20"
+          )}
+          onClick={() => selectFolder(null)}
         >
           <FileIcon className="h-4 w-4 text-primary" />
           <span>All Files</span>

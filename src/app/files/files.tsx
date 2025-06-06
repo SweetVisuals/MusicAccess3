@@ -5,6 +5,7 @@ import { Upload, Folder, File } from "lucide-react"
 import { UnifiedFileBrowser } from "@/components/upload/upload-with-browser"
 import { useFiles } from "@/hooks/useFiles"
 import { useAuth } from "@/contexts/auth-context"
+import { useEffect } from "react"
 
 export default function Page() {
   const { user } = useAuth();
@@ -17,6 +18,14 @@ export default function Page() {
     createFolder, 
     uploadFile 
   } = useFiles(user?.id || '');
+
+  // Fetch files and folders on component mount
+  useEffect(() => {
+    if (user?.id) {
+      fetchFiles();
+      fetchFolders();
+    }
+  }, [user?.id]);
 
   return (
     <SidebarProvider>

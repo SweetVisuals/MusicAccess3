@@ -81,19 +81,12 @@ export function useFiles(userId: string) {
     setError(null);
     
     try {
-      let query = supabase
+      // Get all files for this user
+      const { data: fileData, error: fileError } = await supabase
         .from('files')
         .select('*')
-        .eq('user_id', userId);
-      
-      if (folderId) {
-        query = query.eq('folder_id', folderId);
-      } else {
-        // Only fetch files with null folder_id (root files)
-        query = query.is('folder_id', null);
-      }
-      
-      const { data: fileData, error: fileError } = await query.order('created_at', { ascending: false });
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
       
       if (fileError) throw fileError;
       
