@@ -1,5 +1,5 @@
-import { useLocation, Link } from "react-router-dom"
 import { FolderIcon, PlusCircleIcon, type LucideIcon } from "lucide-react"
+import { Link, useLocation } from "react-router-dom"
 
 import { Button } from "@/components/@/ui/button"
 import {
@@ -21,18 +21,20 @@ export function NavMain({
   }[]
   showQuickActions?: boolean
 }) {
-  const location = useLocation();
+  const location = useLocation()
   
-  // Function to check if a nav item is active
+  // Function to check if a menu item is active
   const isActive = (url: string) => {
-    // Handle exact match for home page
-    if (url === '/' && location.pathname === '/') {
-      return true;
+    // Check if the current path matches the item URL
+    // For dashboard, we need to check both /dashboard and /user/dashboard
+    if (url === '/user/dashboard') {
+      return location.pathname === '/user/dashboard' || location.pathname === '/dashboard'
     }
-    // Handle other pages - check if the pathname starts with the URL
-    // This ensures that sub-routes also highlight the parent nav item
-    return url !== '/' && location.pathname.startsWith(url);
-  };
+    
+    // For other pages, check if the path starts with the URL
+    // This handles nested routes like /dashboard/analytics
+    return location.pathname.startsWith(url)
+  }
 
   return (
     <SidebarGroup>

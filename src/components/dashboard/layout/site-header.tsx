@@ -1,4 +1,3 @@
-import { useLocation } from "react-router-dom"
 import { Separator } from "@/components/@/ui/separator"
 import { SidebarTrigger } from "@/components/@/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/@/ui/avatar"
@@ -17,6 +16,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { useLocation } from "react-router-dom"
 
 export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth()
@@ -24,35 +24,21 @@ export function SiteHeader() {
   const [walletBalance, setWalletBalance] = useState<number>(0)
   const location = useLocation()
 
-  // Get the current page title based on the URL path
-  const getPageTitle = () => {
-    // Remove leading slash and get the first segment of the path
-    const path = location.pathname.split('/')[1]
+  // Get the current page name from the location
+  const getCurrentPageName = () => {
+    const path = location.pathname
     
-    // Special case for root path
-    if (path === '') return 'Discover'
-    
-    // Special case for dashboard
-    if (path === 'dashboard' && location.pathname === '/dashboard') return 'Dashboard'
-    
-    // For dashboard sub-pages, get the second segment
-    if (path === 'dashboard' && location.pathname.split('/').length > 2) {
-      const subPath = location.pathname.split('/')[2]
-      // Capitalize the first letter of each word
-      return subPath.split('-').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ')
+    if (path === '/user/dashboard' || path === '/dashboard') {
+      return 'Dashboard'
     }
     
-    // For user profile pages
-    if (path === 'user' && location.pathname.split('/').length > 2) {
-      return 'Profile'
-    }
+    // Extract the last part of the path and capitalize it
+    const pathSegments = path.split('/')
+    const lastSegment = pathSegments[pathSegments.length - 1]
     
-    // For other pages, capitalize the first letter of each word
-    return path.split('-').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ')
+    if (!lastSegment) return 'Dashboard'
+    
+    return lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1)
   }
 
   // Fetch user's gem and wallet balance
@@ -85,15 +71,12 @@ export function SiteHeader() {
           .eq('user_id', user.id)
           .maybeSingle()
         
-        if (error && error.code !== 'PGRST116') {
-          // Only throw if it's not the "no rows returned" error
-          throw error
-        }
+        if (error) throw error
         
         if (data) {
           setWalletBalance(Number(data.balance) || 0)
         } else {
-          // If no wallet exists, create one
+          // Create wallet if it doesn't exist
           await createUserWallet()
         }
       } catch (error) {
@@ -105,7 +88,9 @@ export function SiteHeader() {
       try {
         const { data, error } = await supabase
           .from('user_wallets')
-          .insert([{ user_id: user.id, balance: 0 }])
+          .insert([
+            { user_id: user.id, balance: 0 }
+          ])
           .select()
         
         if (error) throw error
@@ -144,7 +129,7 @@ export function SiteHeader() {
             orientation="vertical"
             className="mx-2 data-[orientation=vertical]:h-4"
           />
-          <h1 className="text-base font-medium">{getPageTitle()}</h1>
+          <h1 className="text-base font-medium">{getCurrentPageName()}</h1>
         </div>
 
         <div className="flex items-center gap-4">
@@ -160,7 +145,7 @@ export function SiteHeader() {
           </div>
           <ThemeToggle />
           {!user ? (
-            <Button asChild variant="ghost\" size="sm">
+            <Button asChild variant="ghost" size="sm">
               <a href="/auth/login">
                 Login
               </a>
