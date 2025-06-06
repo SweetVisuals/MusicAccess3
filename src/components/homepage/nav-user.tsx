@@ -61,25 +61,11 @@ export function NavUser() {
           .eq('id', authUser.id)
           .single()
 
-        if (error) {
-          console.error('Error fetching profile:', error)
-          // Don't throw here, just log the error
-        }
-        
-        // Set profile data if available, or use defaults from auth user
-        setProfile({
-          username: data?.username || authUser.user_metadata?.username || authUser.email?.split('@')[0] || null,
-          email: data?.email || authUser.email || null,
-          profile_url: data?.profile_url || null
-        })
+        if (error) throw error
+        setProfile(data)
       } catch (error) {
-        console.error('Error in profile fetch:', error)
-        // Set default profile from auth user
-        setProfile({
-          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || null,
-          email: authUser.email || null,
-          profile_url: null
-        })
+        console.error('Error fetching profile:', error)
+        setProfile(null)
       } finally {
         setIsProfileLoading(false)
       }
@@ -94,7 +80,7 @@ export function NavUser() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="lg" variant="outline" className="gap-2">
+          <Button size="lg\" variant="outline\" className="gap-2">
             <LogInIcon className="h-4 w-4" />
             <span>Login / Signup</span>
           </Button>
