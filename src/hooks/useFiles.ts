@@ -11,6 +11,11 @@ export function useFiles(userId: string) {
 
   // Fetch folders and build the folder hierarchy
   async function fetchFolders() {
+    if (!userId) {
+      console.log('No user ID provided for fetchFolders');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
@@ -36,8 +41,7 @@ export function useFiles(userId: string) {
           type: 'folder',
           modified: folder.updated_at || folder.created_at,
           children: [],
-          starred: folder.starred || false,
-          folder_id: folder.parent_id
+          starred: folder.starred
         };
       });
       
@@ -67,7 +71,12 @@ export function useFiles(userId: string) {
   }
 
   // Fetch files for a specific folder or all files
-  async function fetchFiles(folderId?: string) {
+  async function fetchFiles(folderId?: string | null) {
+    if (!userId) {
+      console.log('No user ID provided for fetchFiles');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
@@ -80,6 +89,7 @@ export function useFiles(userId: string) {
       if (folderId) {
         query = query.eq('folder_id', folderId);
       } else {
+        // Only fetch files with null folder_id (root files)
         query = query.is('folder_id', null);
       }
       
@@ -92,11 +102,11 @@ export function useFiles(userId: string) {
         name: file.name,
         type: file.file_type || 'file',
         size: formatFileSize(file.size),
-        modified: file.updated_at || file.created_at,
+        modified: formatDate(file.updated_at || file.created_at),
         audio_url: file.file_url,
         file_path: file.file_path,
         folder_id: file.folder_id,
-        starred: file.starred || false
+        starred: file.starred
       })) || [];
       
       setFiles(formattedFiles);
@@ -109,7 +119,11 @@ export function useFiles(userId: string) {
   }
 
   // Create a new folder
-  async function createFolder(name: string, parentId?: string) {
+  async function createFolder(name: string, parentId?: string | null) {
+    if (!userId) {
+      return { success: false, error: 'User not authenticated' };
+    }
+    
     try {
       if (!name.trim()) {
         throw new Error('Folder name cannot be empty');
@@ -142,7 +156,11 @@ export function useFiles(userId: string) {
   }
 
   // Upload a file to Supabase storage and add record to database
-  async function uploadFile(file: File, folderId?: string, onProgress?: (progress: number) => void) {
+  async function uploadFile(file: File, folderId?: string | null, onProgress?: (progress: number) => void) {
+    if (!userId) {
+      return { success: false, error: 'User not authenticated' };
+    }
+    
     try {
       // Generate unique file path
       const fileId = uuidv4();
@@ -190,8 +208,6 @@ export function useFiles(userId: string) {
       
       if (dbError) throw dbError;
       
-      // Refresh files
-      await fetchFiles(folderId);
       return { success: true, fileId, url: publicUrl };
     } catch (err) {
       console.error('Error uploading file:', err);
@@ -203,7 +219,7 @@ export function useFiles(userId: string) {
   // Delete a file
   async function deleteFile(fileId: string, filePath: string) {
     try {
-      // Delete from storage
+      // Delete from storage if path exists
       if (filePath) {
         const { error: storageError } = await supabase.storage
           .from('audio_files')
@@ -213,15 +229,16 @@ export function useFiles(userId: string) {
       }
       
       // Delete from database
-      const { error: dbError } = await supabase
+      const { error } = await supabase
         .from('files')
         .delete()
         .eq('id', fileId);
       
-      if (dbError) throw dbError;
+      if (error) throw error;
       
       // Update local state
       setFiles(prev => prev.filter(file => file.id !== fileId));
+      
       return { success: true, id: fileId };
     } catch (err) {
       console.error('Error deleting file:', err);
@@ -338,31 +355,6 @@ export function useFiles(userId: string) {
   // Move a folder to become a child of another folder
   async function moveFolder(folderId: string, newParentId: string | null) {
     try {
-      // Check for circular reference
-      if (newParentId) {
-        let currentFolder = newParentId;
-        const { data } = await supabase
-          .from('folders')
-          .select('parent_id')
-          .eq('id', currentFolder)
-          .single();
-        
-        while (data && data.parent_id) {
-          if (data.parent_id === folderId) {
-            throw new Error("Cannot move a folder into its own subfolder");
-          }
-          
-          const { data: parentData } = await supabase
-            .from('folders')
-            .select('parent_id')
-            .eq('id', data.parent_id)
-            .single();
-          
-          if (!parentData) break;
-          currentFolder = parentData.parent_id;
-        }
-      }
-      
       const { error } = await supabase
         .from('folders')
         .update({ parent_id: newParentId })
@@ -370,9 +362,8 @@ export function useFiles(userId: string) {
       
       if (error) throw error;
       
-      // Refresh folders to rebuild hierarchy
+      // Refresh folders
       await fetchFolders();
-      
       return { success: true };
     } catch (err) {
       console.error('Error moving folder:', err);
@@ -381,60 +372,10 @@ export function useFiles(userId: string) {
     }
   }
 
-  // Toggle star status for a file or folder
-  async function toggleStar(id: string, isFolder: boolean, currentStarred: boolean) {
-    try {
-      if (isFolder) {
-        const { error } = await supabase
-          .from('folders')
-          .update({ starred: !currentStarred })
-          .eq('id', id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setFolders(prev => {
-          const updateFolderStar = (items: FileItem[]): FileItem[] => {
-            return items.map(folder => {
-              if (folder.id === id) {
-                return { ...folder, starred: !currentStarred };
-              }
-              if (folder.children) {
-                return {
-                  ...folder,
-                  children: updateFolderStar(folder.children)
-                };
-              }
-              return folder;
-            });
-          };
-          
-          return updateFolderStar(prev);
-        });
-      } else {
-        const { error } = await supabase
-          .from('files')
-          .update({ starred: !currentStarred })
-          .eq('id', id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setFiles(prev => 
-          prev.map(file => 
-            file.id === id 
-              ? { ...file, starred: !currentStarred } 
-              : file
-          )
-        );
-      }
-      
-      return { success: true };
-    } catch (err) {
-      console.error('Error toggling star:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error toggling star');
-      return { success: false, error: err };
-    }
+  // Format date to YYYY-MM-DD
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0];
   }
 
   // Helper function to format file size
@@ -477,7 +418,6 @@ export function useFiles(userId: string) {
     deleteFile,
     deleteFolder,
     moveFile,
-    moveFolder,
-    toggleStar
+    moveFolder
   };
 }

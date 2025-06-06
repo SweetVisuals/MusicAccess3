@@ -41,71 +41,17 @@ import {
 } from '../@/ui/dropdown-menu';
 import { Progress } from '../@/ui/progress';
 import { FileItem } from '@/lib/types';
-
-// Define drag item types
-const ItemTypes = {
-  FILE: 'file',
-  FOLDER: 'folder'
-};
-
-interface DragItem {
-  id: string;
-  type: string;
-  isFolder: boolean;
-}
+import { useFiles } from '@/hooks/useFiles';
 
 interface UnifiedFileBrowserProps {
   initialFiles?: FileItem[];
-  files: FileItem[];
-  folders: FileItem[];
-  onUpload: () => void;
-  onCreateFolder: () => void;
-  uploadFile: (
-    file: File, 
-    folderId?: string, 
-    onProgress?: (progress: number) => void
-  ) => Promise<{ success: boolean }>;
 }
 
-export function UnifiedFileBrowser({ 
-  files,
-  folders: initialFolders,
-  onUpload,
-  onCreateFolder,
-  uploadFile
-}: UnifiedFileBrowserProps) {
+export function UnifiedFileBrowser({ initialFiles }: UnifiedFileBrowserProps) {
   const { user } = useAuth();
-  const [folders, setFolders] = useState<FileItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
-  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
-  const MAX_UPLOAD_FILES = 10;
-
-  // Load folders from database on mount
-  useEffect(() => {
-    if (!user?.id) return;
-    
-    setFolders(initialFolders || []);
-    setIsLoading(false);
-  }, [user?.id, initialFolders]);
-
-  // Filter files based on search query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredFiles(files);
-      return;
-    }
-
-    const filtered = files.filter(file => 
-      file.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setFilteredFiles(filtered);
-  }, [files, searchQuery]);
-
+  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -114,7 +60,40 @@ export function UnifiedFileBrowser({
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const { toast } = useToast();
+  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const MAX_UPLOAD_FILES = 10;
+  
+  // Use the custom hook to manage files and folders
+  const { 
+    files, 
+    folders, 
+    loading, 
+    error, 
+    fetchFiles, 
+    fetchFolders, 
+    createFolder, 
+    uploadFile, 
+    deleteFile, 
+    deleteFolder,
+    moveFile
+  } = useFiles(user?.id || '');
+
+  // Filter files based on search query
+  const filteredFiles = searchQuery.trim() 
+    ? files.filter(file => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : files;
+
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive"
+      });
+    }
+  }, [error, toast]);
 
   const handleNewFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,33 +107,15 @@ export function UnifiedFileBrowser({
       return;
     }
     
-    try {
-      // Create new folder object for database
-      const newFolder = {
-        id: uuidv4(),
-        name: newFolderName.trim(),
-        user_id: user?.id,
-        parent_id: selectedFolder || null
-      };
-      
-      // Call the onCreateFolder function
-      if (typeof onCreateFolder === 'function') {
-        onCreateFolder();
-      }
-      
+    const result = await createFolder(newFolderName.trim(), selectedFolder);
+    
+    if (result.success) {
       setNewFolderName('');
       setShowNewFolderDialog(false);
       
       toast({
         title: "Folder created",
         description: `Folder "${newFolderName.trim()}" was created successfully`,
-      });
-    } catch (error) {
-      console.error('Folder creation error:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create folder",
-        variant: "destructive"
       });
     }
   };
@@ -181,25 +142,8 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state
-        setFolders(prev => {
-          const updateFolderName = (items: FileItem[]): FileItem[] => {
-            return items.map(folder => {
-              if (folder.id === itemToRename.id) {
-                return { ...folder, name: newFileName.trim() };
-              }
-              if (folder.children) {
-                return {
-                  ...folder,
-                  children: updateFolderName(folder.children)
-                };
-              }
-              return folder;
-            });
-          };
-          
-          return updateFolderName(prev);
-        });
+        // Refresh folders
+        fetchFolders();
       } else {
         // Rename file in database
         const { error } = await supabase
@@ -209,14 +153,8 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state
-        setFilteredFiles(prev => 
-          prev.map(file => 
-            file.id === itemToRename.id 
-              ? { ...file, name: newFileName.trim() } 
-              : file
-          )
-        );
+        // Refresh files
+        fetchFiles(selectedFolder);
       }
       
       setShowRenameDialog(false);
@@ -247,14 +185,16 @@ export function UnifiedFileBrowser({
   const selectFolder = (folderId: string | null) => {
     setSelectedFolder(folderId);
     setSelectedItems([]);
+    // Fetch files for the selected folder
+    fetchFiles(folderId);
   };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async () => {
-    const files = fileInputRef.current?.files;
+  const handleFileUpload = async (event?: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event ? event.target.files : fileInputRef.current?.files;
     if (!files || files.length === 0) return;
     
     // Check if too many files are selected
@@ -286,11 +226,13 @@ export function UnifiedFileBrowser({
         setUploadProgress(Math.round((i / files.length) * 100));
         
         // Upload the file with progress tracking
-        await uploadFile(file, selectedFolder || undefined, (progress) => {
+        await uploadFile(file, selectedFolder, (progress) => {
           // Update individual file progress
           setUploadingFiles(prev => {
             const newFiles = [...prev];
-            newFiles[i] = { ...newFiles[i], progress };
+            if (newFiles[i]) {
+              newFiles[i] = { ...newFiles[i], progress };
+            }
             return newFiles;
           });
         });
@@ -305,9 +247,7 @@ export function UnifiedFileBrowser({
       });
       
       // Refresh the file list
-      if (typeof onUpload === 'function') {
-        onUpload();
-      }
+      fetchFiles(selectedFolder);
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -365,48 +305,11 @@ export function UnifiedFileBrowser({
     
     try {
       if (isFolder) {
-        // Delete folder from database
-        const { error } = await supabase
-          .from('folders')
-          .delete()
-          .eq('id', id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setFolders(prev => {
-          const removeFolderFromTree = (items: FileItem[]): FileItem[] => {
-            return items.filter(item => {
-              if (item.id === id) return false;
-              if (item.children) {
-                item.children = removeFolderFromTree(item.children);
-              }
-              return true;
-            });
-          };
-          
-          return removeFolderFromTree(prev);
-        });
+        const result = await deleteFolder(id);
+        if (!result.success) throw new Error(result.error?.toString());
       } else {
-        // Delete file from storage if path exists
-        if (filePath) {
-          const { error: storageError } = await supabase.storage
-            .from('audio_files')
-            .remove([filePath]);
-          
-          if (storageError) throw storageError;
-        }
-        
-        // Delete file from database
-        const { error } = await supabase
-          .from('files')
-          .delete()
-          .eq('id', id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setFilteredFiles(prev => prev.filter(file => file.id !== id));
+        const result = await deleteFile(id, filePath || '');
+        if (!result.success) throw new Error(result.error?.toString());
       }
       
       toast({
@@ -433,25 +336,8 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state
-        setFolders(prev => {
-          const updateFolderStar = (items: FileItem[]): FileItem[] => {
-            return items.map(folder => {
-              if (folder.id === id) {
-                return { ...folder, starred: !currentStarred };
-              }
-              if (folder.children) {
-                return {
-                  ...folder,
-                  children: updateFolderStar(folder.children)
-                };
-              }
-              return folder;
-            });
-          };
-          
-          return updateFolderStar(prev);
-        });
+        // Refresh folders
+        fetchFolders();
       } else {
         const { error } = await supabase
           .from('files')
@@ -460,14 +346,8 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state
-        setFilteredFiles(prev => 
-          prev.map(file => 
-            file.id === id 
-              ? { ...file, starred: !currentStarred } 
-              : file
-          )
-        );
+        // Refresh files
+        fetchFiles(selectedFolder);
       }
       
       toast({
@@ -507,13 +387,6 @@ export function UnifiedFileBrowser({
     });
   };
 
-  // Function to get files for the selected folder
-  const getFilesForSelectedFolder = () => {
-    if (!selectedFolder) return filteredFiles;
-    
-    return filteredFiles.filter(file => file.folder_id === selectedFolder);
-  };
-
   const toggleItemSelection = (id: string) => {
     setSelectedItems(prev => {
       if (prev.includes(id)) {
@@ -524,20 +397,50 @@ export function UnifiedFileBrowser({
     });
   };
 
+  // File drag and drop functionality
+  const handleFileDrop = async (fileId: string, targetFolderId: string | null) => {
+    try {
+      const result = await moveFile(fileId, targetFolderId);
+      if (result.success) {
+        toast({
+          title: "File moved",
+          description: "File has been moved successfully"
+        });
+        // Refresh files for current folder
+        fetchFiles(selectedFolder);
+      } else {
+        throw new Error(result.error?.toString());
+      }
+    } catch (error) {
+      toast({
+        title: "Error moving file",
+        description: error instanceof Error ? error.message : "Failed to move file",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Format duration from seconds to MM:SS
+  const formatDuration = (seconds: number): string => {
+    if (!seconds || isNaN(seconds)) return "00:00";
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
   // Draggable File Component
   const DraggableFile = ({ file }: { file: FileItem }) => {
     const [{ isDragging }, drag] = useDrag(() => ({
-      type: ItemTypes.FILE,
-      item: { id: file.id, type: 'file', isFolder: false },
+      type: 'FILE',
+      item: { id: file.id, type: 'file' },
       collect: (monitor) => ({
-        isDragging: !!monitor.isDragging(),
-      }),
+        isDragging: !!monitor.isDragging()
+      })
     }));
 
     return (
       <div 
         ref={drag}
-        key={file.id} 
         className={cn(
           "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
           isDragging ? "opacity-50" : "",
@@ -623,53 +526,27 @@ export function UnifiedFileBrowser({
   };
 
   // Droppable Folder Component
-  const DroppableFolder = ({ folder, level = 0 }: { folder: FileItem, level?: number }) => {
+  const DroppableFolder = ({ folder, depth = 0 }: { folder: FileItem, depth?: number }) => {
     const [{ isOver }, drop] = useDrop(() => ({
-      accept: ItemTypes.FILE,
-      drop: (item: DragItem) => handleFileDrop(item, folder.id),
+      accept: 'FILE',
+      drop: (item: { id: string, type: string }) => {
+        if (item.type === 'file') {
+          handleFileDrop(item.id, folder.id);
+        }
+      },
       collect: (monitor) => ({
-        isOver: !!monitor.isOver(),
-      }),
+        isOver: !!monitor.isOver()
+      })
     }));
 
-    // Handle file drop into folder
-    const handleFileDrop = async (item: DragItem, targetFolderId: string) => {
-      if (item.isFolder) return; // Don't handle folder drops for now
-      
-      try {
-        // Update file's folder_id in database
-        const { error } = await supabase
-          .from('files')
-          .update({ folder_id: targetFolderId })
-          .eq('id', item.id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setFilteredFiles(prev => 
-          prev.map(file => 
-            file.id === item.id 
-              ? { ...file, folder_id: targetFolderId } 
-              : file
-          )
-        );
-        
-        toast({
-          title: "File moved",
-          description: "File has been moved to the selected folder",
-        });
-      } catch (error) {
-        console.error('Error moving file:', error);
-        toast({
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to move file",
-          variant: "destructive"
-        });
-      }
-    };
-
     return (
-      <div ref={drop} className={cn("space-y-0.5 transition-all duration-200", isOver && "bg-primary/5 rounded-md")}>
+      <div 
+        ref={drop}
+        className={cn(
+          "transition-all duration-200",
+          isOver && "bg-primary/10 rounded-md"
+        )}
+      >
         <div className="flex items-center">
           <Button 
             variant={selectedFolder === folder.id ? "secondary" : "ghost"}
@@ -677,7 +554,7 @@ export function UnifiedFileBrowser({
               "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md",
               "transition-all duration-200 hover:bg-primary/10",
               selectedFolder === folder.id && "bg-primary/15 hover:bg-primary/20",
-              level > 0 && "pl-8"
+              depth > 0 && `pl-${4 + depth * 4}`
             )}
             onClick={() => {
               selectFolder(folder.id);
@@ -746,9 +623,45 @@ export function UnifiedFileBrowser({
           expandedFolders[folder.id] ? "max-h-96" : "max-h-0"
         )}>
           {folder.children?.filter(item => item.type === 'folder').map((subfolder) => (
-            <DroppableFolder key={subfolder.id} folder={subfolder} level={level + 1} />
+            <DroppableFolder key={subfolder.id} folder={subfolder} depth={depth + 1} />
           ))}
         </div>
+      </div>
+    );
+  };
+
+  // Root level droppable area
+  const RootDroppable = () => {
+    const [{ isOver }, drop] = useDrop(() => ({
+      accept: 'FILE',
+      drop: (item: { id: string, type: string }) => {
+        if (item.type === 'file') {
+          handleFileDrop(item.id, null);
+        }
+      },
+      collect: (monitor) => ({
+        isOver: !!monitor.isOver()
+      })
+    }));
+
+    return (
+      <div 
+        ref={drop}
+        className={cn(
+          "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
+          "transition-all duration-200 hover:bg-primary/10",
+          selectedFolder === null && "bg-primary/15 hover:bg-primary/20",
+          isOver && "bg-primary/20"
+        )}
+        onClick={() => selectFolder(null)}
+      >
+        <Button 
+          variant={selectedFolder === null ? "secondary" : "ghost"}
+          className="w-full justify-start gap-2"
+        >
+          <FileIcon className="h-4 w-4 text-primary" />
+          <span>All Files</span>
+        </Button>
       </div>
     );
   };
@@ -799,24 +712,14 @@ export function UnifiedFileBrowser({
           <Separator />
 
           <div className="space-y-2">
-            <Button 
-              variant={selectedFolder === null ? "secondary" : "ghost"}
-              className={cn(
-                "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
-                "transition-all duration-200 hover:bg-primary/10",
-                selectedFolder === null && "bg-primary/15 hover:bg-primary/20"
-              )}
-              onClick={() => selectFolder(null)}
-            >
-              <FileIcon className="h-4 w-4 text-primary" />
-              <span>All Files</span>
-            </Button>
-
             <h3 className="text-sm font-medium mb-2 px-2 flex items-center">
               <Folder className="h-4 w-4 mr-2 text-primary" />
               <span>Folders</span>
             </h3>
+            
             <div className="space-y-0.5 max-h-[300px] overflow-y-auto pr-1">
+              <RootDroppable />
+              
               {folders.map((folder) => (
                 <DroppableFolder key={folder.id} folder={folder} />
               ))}
@@ -885,7 +788,7 @@ export function UnifiedFileBrowser({
                 <div className="relative max-w-md mx-auto">
                   <Progress 
                     value={uploadProgress} 
-                    className="h-2 bg-muted" 
+                    className="h-2" 
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">{Math.round(uploadProgress)}%</p>
@@ -903,7 +806,7 @@ export function UnifiedFileBrowser({
                           </div>
                           <Progress 
                             value={file.progress} 
-                            className="h-1 bg-muted/50" 
+                            className="h-1" 
                           />
                         </div>
                       ))}
@@ -928,12 +831,23 @@ export function UnifiedFileBrowser({
           </div>
 
           <div className="flex-1 p-4">
-            {/* Display files for selected folder */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {getFilesForSelectedFolder().map((file) => (
-                <DraggableFile key={file.id} file={file} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Loading files...</p>
+              </div>
+            ) : filteredFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                <FileIcon className="h-12 w-12 mb-4 opacity-30" />
+                <p>No files found</p>
+                <p className="text-sm">Upload files or select a different folder</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredFiles.map((file) => (
+                  <DraggableFile key={file.id} file={file} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
