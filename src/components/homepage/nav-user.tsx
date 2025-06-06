@@ -44,26 +44,17 @@ export function NavUser() {
     profile_url: string | null
   } | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
-  const [profileError, setProfileError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authUser) {
       setProfile(null)
       setIsProfileLoading(false)
-      setProfileError(null)
       return
     }
 
     const fetchProfile = async () => {
       setIsProfileLoading(true)
-      setProfileError(null)
-      
       try {
-        // Check if Supabase is properly configured
-        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-          throw new Error('Supabase configuration missing. Please check your environment variables.')
-        }
-
         const { data, error } = await supabase
           .from('profiles')
           .select('username, email, profile_url')
@@ -71,28 +62,21 @@ export function NavUser() {
           .single()
 
         if (error) {
-          // Handle specific Supabase errors
-          if (error.code === 'PGRST116') {
-            // No rows returned - profile doesn't exist yet
-            console.log('Profile not found, using auth user data')
-            setProfile({
-              username: null,
-              email: authUser.email || null,
-              profile_url: null
-            })
-          } else {
-            throw error
-          }
-        } else {
-          setProfile(data)
+          console.error('Error fetching profile:', error)
+          // Don't throw here, just log the error
         }
-      } catch (error: any) {
-        console.error('Error fetching profile:', error)
-        setProfileError(error.message || 'Failed to load profile')
         
-        // Fallback to auth user data
+        // Set profile data if available, or use defaults from auth user
         setProfile({
-          username: null,
+          username: data?.username || authUser.user_metadata?.username || authUser.email?.split('@')[0] || null,
+          email: data?.email || authUser.email || null,
+          profile_url: data?.profile_url || null
+        })
+      } catch (error) {
+        console.error('Error in profile fetch:', error)
+        // Set default profile from auth user
+        setProfile({
+          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || null,
           email: authUser.email || null,
           profile_url: null
         })
@@ -106,11 +90,11 @@ export function NavUser() {
 
   if (isAuthLoading || isProfileLoading) return null
 
-  if (!authUser) {
+  if (!authUser || !profile) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="lg\" variant="outline\" className="gap-2">
+          <Button size="lg" variant="outline" className="gap-2">
             <LogInIcon className="h-4 w-4" />
             <span>Login / Signup</span>
           </Button>
@@ -136,13 +120,6 @@ export function NavUser() {
         </DropdownMenuContent>
       </DropdownMenu>
     )
-  }
-
-  // Use profile data or fallback to auth user data
-  const displayProfile = profile || {
-    username: null,
-    email: authUser.email || null,
-    profile_url: null
   }
 
   return (
@@ -171,17 +148,17 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-full bg-gray-300">
-                <AvatarImage src={displayProfile.profile_url || ''} alt={displayProfile.username || ''} />
+                <AvatarImage src={profile.profile_url || ''} alt={profile.username || ''} />
                 <AvatarFallback className="rounded-full bg-gray-300">
-                  {displayProfile.username?.charAt(0).toUpperCase() || authUser.email?.charAt(0).toUpperCase() || 'U'}
+                  {profile.username?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
-                  {displayProfile.username || authUser.email?.split('@')[0]}
+                  {profile.username || authUser.email?.split('@')[0]}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {displayProfile.email || authUser.email}
+                  {profile.email || authUser.email}
                 </span>
               </div>
               <MoreVerticalIcon className="ml-auto size-4" />
@@ -196,17 +173,17 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-full bg-gray-300">
-                  <AvatarImage src={displayProfile.profile_url || ''} alt={displayProfile.username || ''} />
+                  <AvatarImage src={profile.profile_url || ''} alt={profile.username || ''} />
                   <AvatarFallback className="rounded-full bg-gray-300">
-                    {displayProfile.username?.charAt(0).toUpperCase() || authUser.email?.charAt(0).toUpperCase() || 'U'}
+                    {profile.username?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">
-                    {displayProfile.username || authUser.email?.split('@')[0]}
+                    {profile.username || authUser.email?.split('@')[0]}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {displayProfile.email || authUser.email}
+                    {profile.email || authUser.email}
                   </span>
                 </div>
               </div>
