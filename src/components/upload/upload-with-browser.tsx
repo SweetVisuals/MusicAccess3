@@ -439,8 +439,13 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Update local state
+        // Update local state immediately
         setFilteredFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
+        
+        // Call onUpload to refresh the file list from the parent component
+        if (typeof onUpload === 'function') {
+          onUpload();
+        }
       }
       
       toast({
