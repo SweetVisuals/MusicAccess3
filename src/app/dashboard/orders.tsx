@@ -85,7 +85,7 @@ export default function OrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("beat");
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [orderStats, setOrderStats] = useState<OrderStats>({
     totalOrders: 0,
@@ -207,7 +207,10 @@ export default function OrdersPage() {
         // Simulate API call
         await new Promise(resolve => setTimeout(resolve, 1000));
         setOrders(sampleOrders);
-        setFilteredOrders(sampleOrders);
+        
+        // Apply initial filter for beats
+        const initialFiltered = sampleOrders.filter(order => order.type === 'beat');
+        setFilteredOrders(initialFiltered);
         
         // Calculate order stats
         calculateOrderStats(sampleOrders);
