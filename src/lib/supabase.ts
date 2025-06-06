@@ -53,9 +53,16 @@ export async function updateProfile(updates: {
   tabOrder?: string[];
   defaultTab?: string;
 }) {
+  // Map the 'name' property to 'full_name' to match the database schema
+  const { name, ...otherUpdates } = updates;
+  const dbUpdates = {
+    ...otherUpdates,
+    ...(name !== undefined && { full_name: name })
+  };
+
   const { error } = await supabase
     .from('profiles')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', updates.id);
 
   if (error) {
