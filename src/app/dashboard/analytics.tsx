@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { AppSidebar } from "@/components/dashboard/layout/app-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/@/ui/sidebar"
 import { SiteHeader } from "@/components/dashboard/layout/site-header"
