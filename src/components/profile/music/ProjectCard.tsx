@@ -1,4 +1,4 @@
-import { Play, Heart, Download, MoreVertical, ListMusic, Plus } from 'lucide-react';
+import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/@/ui/button';
 import { Badge } from '@/components/@/ui/badge';
 import { useAudioPlayer, type Track } from '@/contexts/audio-player-context';
@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/@/ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/@/ui/avatar';
 
 interface ProjectCardProps {
   project: {
@@ -17,6 +18,12 @@ interface ProjectCardProps {
     tracks?: Array<any>;
     totalTracks?: number;
     isPopular?: boolean;
+    creator?: {
+      name: string;
+      avatar?: string;
+      tag?: string;
+    };
+    price?: number;
   };
   variant?: 'grid' | 'list';
   id: string;
@@ -27,6 +34,16 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
   if (variant === 'list') {
     return null; // Projects only shown in grid view
   }
+
+  // Default creator info if not provided
+  const creator = project.creator || {
+    name: 'Artist Name',
+    avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
+    tag: 'Producer'
+  };
+
+  // Default price if not provided
+  const price = project.price || 29.99;
 
   return (
     <div id={id} className="group relative rounded-lg overflow-hidden bg-muted/50 hover:bg-muted transition-all duration-300 shadow-sm hover:shadow-md">
@@ -94,46 +111,30 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <Heart className="h-4 w-4" />
+        {/* Creator Info */}
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={creator.avatar} alt={creator.name} />
+            <AvatarFallback>{creator.name[0]}</AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{creator.name}</p>
+            <div className="flex items-center gap-1">
+              <Tag className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">{creator.tag}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Purchase Actions */}
+        <div className="flex items-center gap-2 pt-2">
+          <Button className="flex-1 h-9" size="sm">
+            Buy Now ${price}
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <Plus className="h-4 w-4" />
+          <Button variant="outline" size="sm" className="h-9">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Contact
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 w-8 p-0"
-                onClick={(e) => {
-                  // Stop propagation to prevent track play/pause
-                  e.stopPropagation();
-                }}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end"
-              onClick={(e) => {
-                // Stop propagation to prevent track play/pause
-                e.stopPropagation();
-              }}
-              style={{ zIndex: 100 }}
-            >
-              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                <ListMusic className="h-4 w-4 mr-2" />
-                Add to playlist
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
     </div>
