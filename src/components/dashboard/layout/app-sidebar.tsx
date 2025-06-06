@@ -54,11 +54,6 @@ const data = {
       icon: DollarSign,
     },
     {
-      title: "Manage Files",
-      url: "/dashboard/projects",
-      icon: FolderIcon,
-    },
-    {
       title: "Post A Service",
       url: "/dashboard/services",
       icon: DatabaseIcon,
