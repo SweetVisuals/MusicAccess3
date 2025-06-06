@@ -34,7 +34,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter
+  DialogFooter,
+  DialogDescription
 } from '../@/ui/dialog';
 import {
   DropdownMenu,
@@ -71,6 +72,8 @@ export function UnifiedFileBrowser({
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{id: string, name: string, isFolder: boolean, filePath?: string} | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFileName, setNewFileName] = useState('');
   const [itemToRename, setItemToRename] = useState<{id: string, name: string, isFolder: boolean} | null>(null);
@@ -369,17 +372,16 @@ export function UnifiedFileBrowser({
     }
   };
 
-  const handleDeleteItem = async (id: string, isFolder: boolean, filePath?: string) => {
-    const confirmDelete = window.confirm(`Are you sure you want to delete this ${isFolder ? 'folder' : 'file'}?`);
-    if (!confirmDelete) return;
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
     
     try {
-      if (isFolder) {
+      if (itemToDelete.isFolder) {
         // Delete folder from database
         const { error } = await supabase
           .from('folders')
           .delete()
-          .eq('id', id);
+          .eq('id', itemToDelete.id);
         
         if (error) throw error;
         
@@ -387,10 +389,10 @@ export function UnifiedFileBrowser({
         onCreateFolder();
       } else {
         // Delete file from storage if path exists
-        if (filePath) {
+        if (itemToDelete.filePath) {
           const { error: storageError } = await supabase.storage
             .from('audio_files')
-            .remove([filePath]);
+            .remove([itemToDelete.filePath]);
           
           if (storageError) throw storageError;
         }
@@ -399,7 +401,7 @@ export function UnifiedFileBrowser({
         const { error } = await supabase
           .from('files')
           .delete()
-          .eq('id', id);
+          .eq('id', itemToDelete.id);
         
         if (error) throw error;
         
@@ -409,8 +411,12 @@ export function UnifiedFileBrowser({
       
       toast({
         title: "Deleted successfully",
-        description: `${isFolder ? 'Folder' : 'File'} has been deleted`,
+        description: `${itemToDelete.isFolder ? 'Folder' : 'File'} has been deleted`,
       });
+      
+      // Close dialog and reset state
+      setShowDeleteDialog(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error('Delete error:', error);
       toast({
@@ -732,7 +738,13 @@ export function UnifiedFileBrowser({
                 className="text-red-500"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteItem(file.id, false, file.file_path);
+                  setItemToDelete({
+                    id: file.id,
+                    name: file.name,
+                    isFolder: false,
+                    filePath: file.file_path
+                  });
+                  setShowDeleteDialog(true);
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
@@ -828,7 +840,14 @@ export function UnifiedFileBrowser({
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-red-500"
-                onClick={() => handleDeleteItem(folder.id, true)}
+                onClick={() => {
+                  setItemToDelete({
+                    id: folder.id,
+                    name: folder.name,
+                    isFolder: true
+                  });
+                  setShowDeleteDialog(true);
+                }}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
@@ -1012,7 +1031,7 @@ export function UnifiedFileBrowser({
 
         {/* Main file browser area */}
         <div className="flex-1 flex flex-col">
-          <div className="p-4 border-b flex items-center justify-between">
+          <div className="p-4 border-b">
             <h1 className="text-2xl font-bold">
               {showAllFiles ? 'All Files' : (
                 selectedFolder ? 
@@ -1172,6 +1191,43 @@ export function UnifiedFileBrowser({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete {itemToDelete?.isFolder ? 'Folder' : 'File'}</DialogTitle>
+            <DialogDescription className="pt-2">
+              Are you sure you want to delete <span className="font-medium">{itemToDelete?.name}</span>?
+              {itemToDelete?.isFolder && (
+                <span className="block mt-2 text-destructive">
+                  This will also delete all files and subfolders inside this folder.
+                </span>
+              )}
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setItemToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive"
+              onClick={handleDeleteItem}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DndProvider>
