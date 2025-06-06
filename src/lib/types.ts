@@ -4,7 +4,7 @@ export interface User {
 
 export interface Profile {
   id: string;
-  name: string;
+  full_name: string;  // Changed from 'name' to 'full_name' to match database schema
   username: string;
   bio: string;
   location?: string;
@@ -146,19 +146,4 @@ export interface Album {
 export interface ProfileWithStatsResponse {
   profile: Profile;
   stats: ProfileStats | null;
-}
-
-export interface Service {
-  id: string;
-  title: string;
-  type: string;
-  description: string;
-  price: number | null;
-  delivery_time: string | null;
-  revisions: number | null;
-  is_featured: boolean;
-  is_active: boolean;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
 }

@@ -41,7 +41,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
 
   if (!user) return null;
 
-  const name = profile?.name || '';
+  const name = profile?.full_name || ''; // Changed from name to full_name
   const bannerUrl = profile?.bannerUrl || '';
   const avatarUrl = profile?.avatarUrl || '';
 

@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 export function transformProfileFromDB(dbProfile: any): Profile {
   return {
     id: dbProfile.id,
-    name: dbProfile.full_name || 'Unknown User',
+    full_name: dbProfile.full_name || 'Unknown User', // Changed from name to full_name
     username: dbProfile.username || 'unknown',
     bio: dbProfile.bio || '',
     location: dbProfile.location,
