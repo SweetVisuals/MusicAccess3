@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '@/contexts/auth-context';
+import { useAudioPlayer } from '@/contexts/audio-player-context';
 import { 
   Search,
   Upload,
@@ -16,7 +17,9 @@ import {
   Download,
   MoreHorizontal,
   AlertCircle,
-  Music
+  Music,
+  Play,
+  Pause
 } from 'lucide-react';
 import { Button } from '../@/ui/button';
 import { Input } from '../@/ui/input';
@@ -63,6 +66,7 @@ export function UnifiedFileBrowser({
 }: UnifiedFileBrowserProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { currentTrack, playTrack, isPlaying, togglePlay } = useAudioPlayer();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
@@ -488,6 +492,40 @@ export function UnifiedFileBrowser({
     });
   };
 
+  // Play audio file in the audio player
+  const handlePlayAudio = (file: FileItem) => {
+    if (!file.audio_url) {
+      toast({
+        title: "Playback error",
+        description: "Audio URL is not available",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Find folder name for context
+    const folderName = file.folder_id ? 
+      folders.find(f => f.id === file.folder_id)?.name || "Unknown Folder" : 
+      "Root";
+    
+    // Create track object for audio player
+    const track = {
+      id: file.id,
+      title: file.name,
+      duration: "0:00", // We don't have actual duration info
+      artworkUrl: "https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg", // Default artwork
+      projectTitle: folderName
+    };
+    
+    // Play the track
+    playTrack(track);
+    
+    toast({
+      title: "Now playing",
+      description: `${file.name}`
+    });
+  };
+
   // File drag and drop functionality
   const handleFileDrop = async (fileId: string, targetFolderId: string | null) => {
     try {
@@ -525,6 +563,9 @@ export function UnifiedFileBrowser({
       })
     }));
 
+    // Check if this file is currently playing
+    const isCurrentlyPlaying = currentTrack?.id === file.id;
+
     // Get folder name for the file if it has a folder_id
     const folderName = useMemo(() => {
       if (!file.folder_id) return null;
@@ -554,20 +595,51 @@ export function UnifiedFileBrowser({
         className={cn(
           "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
           isDragging ? "opacity-50" : "",
+          isCurrentlyPlaying ? "bg-primary/20 border-primary shadow-md" : "",
           selectedItems.includes(file.id) 
             ? "bg-primary/10 border-primary" 
             : "hover:shadow-md hover:bg-primary/5"
         )}
         onClick={() => toggleItemSelection(file.id)}
       >
-        <div className="p-2 bg-primary/10 rounded-md">
+        <div className="p-2 bg-primary/10 rounded-md relative group">
           <Music className="h-5 w-5 text-primary" />
+          
+          {/* Play button overlay */}
+          <div 
+            className="absolute inset-0 flex items-center justify-center bg-primary/80 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isCurrentlyPlaying) {
+                togglePlay();
+              } else {
+                handlePlayAudio(file);
+              }
+            }}
+          >
+            {isCurrentlyPlaying && isPlaying ? (
+              <Pause className="h-3 w-3 text-white" />
+            ) : (
+              <Play className="h-3 w-3 text-white" />
+            )}
+          </div>
         </div>
+        
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
-            <p className="font-medium truncate">{file.name}</p>
+            <p className={cn(
+              "font-medium truncate",
+              isCurrentlyPlaying && "text-primary"
+            )}>
+              {file.name}
+            </p>
             {file.starred && (
               <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+            )}
+            {isCurrentlyPlaying && (
+              <span className="flex-shrink-0 text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                Playing
+              </span>
             )}
           </div>
           <div className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -585,60 +657,89 @@ export function UnifiedFileBrowser({
           </div>
         </div>
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => {
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 text-primary"
+            onClick={(e) => {
               e.stopPropagation();
-              handleDownloadFile(file);
-            }}>
-              <Download className="h-4 w-4 mr-2" />
-              Download
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation();
-              setItemToRename({
-                id: file.id,
-                name: file.name,
-                isFolder: false
-              });
-              setNewFileName(file.name);
-              setShowRenameDialog(true);
-            }}>
-              <Edit className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation();
-              handleToggleStar(file.id, false, !!file.starred);
-            }}>
-              <Star className={cn(
-                "h-4 w-4 mr-2",
-                file.starred && "fill-yellow-400 text-yellow-400"
-              )} />
-              {file.starred ? 'Unstar' : 'Star'}
-            </DropdownMenuItem>
-            <DropdownMenuItem 
-              className="text-red-500"
-              onClick={(e) => {
+              if (isCurrentlyPlaying) {
+                togglePlay();
+              } else {
+                handlePlayAudio(file);
+              }
+            }}
+          >
+            {isCurrentlyPlaying && isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={(e) => {
                 e.stopPropagation();
-                handleDeleteItem(file.id, false, file.file_path);
-              }}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                handlePlayAudio(file);
+              }}>
+                <Play className="h-4 w-4 mr-2" />
+                Play
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                handleDownloadFile(file);
+              }}>
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                setItemToRename({
+                  id: file.id,
+                  name: file.name,
+                  isFolder: false
+                });
+                setNewFileName(file.name);
+                setShowRenameDialog(true);
+              }}>
+                <Edit className="h-4 w-4 mr-2" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                handleToggleStar(file.id, false, !!file.starred);
+              }}>
+                <Star className={cn(
+                  "h-4 w-4 mr-2",
+                  file.starred && "fill-yellow-400 text-yellow-400"
+                )} />
+                {file.starred ? 'Unstar' : 'Star'}
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-red-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteItem(file.id, false, file.file_path);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     );
   };

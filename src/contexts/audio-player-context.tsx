@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useRef, useEffect } from 'react';
 
 export type Track = {
   id: string;
@@ -7,6 +7,7 @@ export type Track = {
   artworkUrl?: string;
   artist?: string;
   projectTitle?: string;
+  audioUrl?: string; // URL to the audio file
 };
 
 type AudioPlayerContextType = {
@@ -14,6 +15,9 @@ type AudioPlayerContextType = {
   isPlaying: boolean;
   playTrack: (track: Track) => void;
   togglePlay: () => void;
+  progress: number;
+  duration: number;
+  seek: (time: number) => void;
 };
 
 const AudioPlayerContext = createContext<AudioPlayerContextType>({
@@ -21,24 +25,117 @@ const AudioPlayerContext = createContext<AudioPlayerContextType>({
   isPlaying: false,
   playTrack: () => {},
   togglePlay: () => {},
+  progress: 0,
+  duration: 0,
+  seek: () => {},
 });
 
 export function AudioPlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Initialize audio element
+  useEffect(() => {
+    const audio = new Audio();
+    audioRef.current = audio;
+    
+    // Set up event listeners
+    audio.addEventListener('timeupdate', updateProgress);
+    audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('ended', handleEnded);
+    
+    return () => {
+      audio.removeEventListener('timeupdate', updateProgress);
+      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.addEventListener('ended', handleEnded);
+      audio.pause();
+    };
+  }, []);
+  
+  // Update audio source when track changes
+  useEffect(() => {
+    if (currentTrack && audioRef.current) {
+      // Use the track's audio URL or fall back to a default
+      audioRef.current.src = currentTrack.audioUrl || '';
+      
+      if (isPlaying) {
+        audioRef.current.play().catch(error => {
+          console.error('Error playing audio:', error);
+          setIsPlaying(false);
+        });
+      }
+    }
+  }, [currentTrack]);
+  
+  const updateProgress = () => {
+    if (audioRef.current) {
+      setProgress(audioRef.current.currentTime);
+    }
+  };
+  
+  const updateDuration = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+  
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setProgress(0);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+    }
+  };
 
   const playTrack = (track: Track) => {
-    console.log('Playing track:', track);
+    // If it's the same track, just toggle play/pause
+    if (currentTrack && currentTrack.id === track.id) {
+      togglePlay();
+      return;
+    }
+    
+    // Otherwise, set the new track and start playing
     setCurrentTrack(track);
     setIsPlaying(true);
   };
 
   const togglePlay = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(error => {
+        console.error('Error playing audio:', error);
+      });
+    }
+    
     setIsPlaying(!isPlaying);
+  };
+  
+  const seek = (time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      setProgress(time);
+    }
   };
 
   return (
-    <AudioPlayerContext.Provider value={{ currentTrack, isPlaying, playTrack, togglePlay }}>
+    <AudioPlayerContext.Provider 
+      value={{ 
+        currentTrack, 
+        isPlaying, 
+        playTrack, 
+        togglePlay,
+        progress,
+        duration,
+        seek
+      }}
+    >
       {children}
     </AudioPlayerContext.Provider>
   );
