@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '@/contexts/auth-context';
-import { useAudioPlayer } from '@/contexts/audio-player-context';
 import { 
   Search,
   Upload,
@@ -16,10 +15,7 @@ import {
   Star,
   Download,
   MoreHorizontal,
-  AlertCircle,
-  Music,
-  Play,
-  Pause
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '../@/ui/button';
 import { Input } from '../@/ui/input';
@@ -34,8 +30,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription
+  DialogFooter
 } from '../@/ui/dialog';
 import {
   DropdownMenu,
@@ -47,32 +42,81 @@ import { Progress } from '../@/ui/progress';
 import { FileItem } from '@/lib/types';
 
 interface UnifiedFileBrowserProps {
+  initialFiles?: FileItem[];
   files: FileItem[];
   folders: FileItem[];
   onUpload: () => void;
   onCreateFolder: () => void;
   uploadFile: (
     file: File, 
-    folderId?: string | null, 
+    folderId?: string, 
     onProgress?: (progress: number) => void
   ) => Promise<{ success: boolean }>;
 }
 
 export function UnifiedFileBrowser({ 
+  initialFiles,
   files,
-  folders,
+  folders: initialFolders,
   onUpload,
   onCreateFolder,
   uploadFile
 }: UnifiedFileBrowserProps) {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const { currentTrack, playTrack, isPlaying, togglePlay } = useAudioPlayer();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [folders, setFolders] = useState<FileItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
+  const MAX_UPLOAD_FILES = 10;
+
+  // Load folders from database on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const loadFolders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('folders')
+          .select('*')
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        setFolders(data || []);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load folders",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFolders();
+  }, [user?.id]);
+
+  // Filter files based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredFiles(files);
+      return;
+    }
+
+    const filtered = files.filter(file => 
+      file.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredFiles(filtered);
+  }, [files, searchQuery]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{id: string, name: string, isFolder: boolean, filePath?: string} | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFileName, setNewFileName] = useState('');
@@ -80,75 +124,7 @@ export function UnifiedFileBrowser({
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [showAllFiles, setShowAllFiles] = useState(true);
-  const MAX_UPLOAD_FILES = 10;
-  
-  // Filter files based on search query and selected folder
-  const filteredFiles = useMemo(() => {
-    let result = files;
-    
-    // Filter by search query if provided
-    if (searchQuery.trim()) {
-      result = result.filter(file => 
-        file.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    
-    // If not showing all files, filter by selected folder
-    if (!showAllFiles) {
-      if (selectedFolder !== null) {
-        result = result.filter(file => file.folder_id === selectedFolder);
-      } else {
-        // In root folder, show only files with no folder_id
-        result = result.filter(file => file.folder_id === null);
-      }
-    }
-    
-    return result;
-  }, [files, searchQuery, selectedFolder, showAllFiles]);
-
-  useEffect(() => {
-    // Expand folders that contain the selected folder
-    if (selectedFolder) {
-      const findParentFolders = (folderId: string, allFolders: FileItem[]): string[] => {
-        for (const folder of allFolders) {
-          if (folder.id === folderId) {
-            return [];
-          }
-          
-          if (folder.children) {
-            for (const child of folder.children) {
-              if (child.id === folderId) {
-                return [folder.id];
-              }
-              
-              if (child.type === 'folder') {
-                const parentFolders = findParentFolders(folderId, [child]);
-                if (parentFolders.length > 0) {
-                  return [folder.id, ...parentFolders];
-                }
-              }
-            }
-          }
-        }
-        
-        return [];
-      };
-      
-      const parentFolders = findParentFolders(selectedFolder, folders);
-      
-      if (parentFolders.length > 0) {
-        const newExpandedFolders = { ...expandedFolders };
-        parentFolders.forEach(id => {
-          newExpandedFolders[id] = true;
-        });
-        setExpandedFolders(newExpandedFolders);
-      }
-    }
-  }, [selectedFolder, folders]);
+  const { toast } = useToast();
 
   const handleNewFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,18 +139,34 @@ export function UnifiedFileBrowser({
     }
     
     try {
-      // Create new folder
-      const { error } = await supabase
+      // Create new folder object for database
+      const newFolder = {
+        id: uuidv4(),
+        name: newFolderName.trim(),
+        user_id: user?.id,
+        parent_id: selectedFolder || null
+      };
+      
+      // Save to database
+      const { data, error } = await supabase
         .from('folders')
-        .insert([{ 
-          id: uuidv4(),
-          name: newFolderName.trim(), 
-          user_id: user?.id,
-          parent_id: selectedFolder || null
-        }]);
+        .insert(newFolder)
+        .select()
+        .single();
       
       if (error) throw error;
       
+      // Create UI folder object
+      const uiFolder: FileItem = {
+        id: data.id,
+        name: newFolderName.trim(),
+        type: 'folder',
+        modified: new Date().toISOString().split('T')[0],
+        children: []
+      };
+      
+      // Update local folders state
+      setFolders(prev => [...prev, uiFolder]);
       setNewFolderName('');
       setShowNewFolderDialog(false);
       
@@ -182,9 +174,6 @@ export function UnifiedFileBrowser({
         title: "Folder created",
         description: `Folder "${newFolderName.trim()}" was created successfully`,
       });
-      
-      // Refresh folders
-      onCreateFolder();
     } catch (error) {
       console.error('Folder creation error:', error);
       toast({
@@ -217,8 +206,25 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh folders
-        onCreateFolder();
+        // Update local state
+        setFolders(prev => {
+          const updateFolderName = (items: FileItem[]): FileItem[] => {
+            return items.map(folder => {
+              if (folder.id === itemToRename.id) {
+                return { ...folder, name: newFileName.trim() };
+              }
+              if (folder.children) {
+                return {
+                  ...folder,
+                  children: updateFolderName(folder.children)
+                };
+              }
+              return folder;
+            });
+          };
+          
+          return updateFolderName(prev);
+        });
       } else {
         // Rename file in database
         const { error } = await supabase
@@ -228,8 +234,14 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh files
-        onUpload();
+        // Update local state
+        setFilteredFiles(prev => 
+          prev.map(file => 
+            file.id === itemToRename.id 
+              ? { ...file, name: newFileName.trim() } 
+              : file
+          )
+        );
       }
       
       setShowRenameDialog(false);
@@ -266,8 +278,8 @@ export function UnifiedFileBrowser({
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async (event?: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event?.target.files || fileInputRef.current?.files;
+  const handleFileUpload = async () => {
+    const files = fileInputRef.current?.files;
     if (!files || files.length === 0) return;
     
     // Check if too many files are selected
@@ -299,13 +311,11 @@ export function UnifiedFileBrowser({
         setUploadProgress(Math.round((i / files.length) * 100));
         
         // Upload the file with progress tracking
-        await uploadFile(file, selectedFolder, (progress) => {
+        await uploadFile(file, selectedFolder || undefined, (progress) => {
           // Update individual file progress
           setUploadingFiles(prev => {
             const newFiles = [...prev];
-            if (newFiles[i]) {
-              newFiles[i] = { ...newFiles[i], progress };
-            }
+            newFiles[i] = { ...newFiles[i], progress };
             return newFiles;
           });
         });
@@ -320,7 +330,9 @@ export function UnifiedFileBrowser({
       });
       
       // Refresh the file list
-      onUpload();
+      if (typeof onUpload === 'function') {
+        onUpload();
+      }
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -372,6 +384,16 @@ export function UnifiedFileBrowser({
     }
   };
 
+  const confirmDeleteItem = (id: string, isFolder: boolean, name: string, filePath?: string) => {
+    setItemToDelete({
+      id,
+      name,
+      isFolder,
+      filePath
+    });
+    setShowDeleteConfirmDialog(true);
+  };
+
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     
@@ -385,8 +407,20 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh folders
-        onCreateFolder();
+        // Update local state
+        setFolders(prev => {
+          const removeFolderFromTree = (items: FileItem[]): FileItem[] => {
+            return items.filter(item => {
+              if (item.id === itemToDelete.id) return false;
+              if (item.children) {
+                item.children = removeFolderFromTree(item.children);
+              }
+              return true;
+            });
+          };
+          
+          return removeFolderFromTree(prev);
+        });
       } else {
         // Delete file from storage if path exists
         if (itemToDelete.filePath) {
@@ -405,8 +439,8 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh files
-        onUpload();
+        // Update local state
+        setFilteredFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
       }
       
       toast({
@@ -414,8 +448,7 @@ export function UnifiedFileBrowser({
         description: `${itemToDelete.isFolder ? 'Folder' : 'File'} has been deleted`,
       });
       
-      // Close dialog and reset state
-      setShowDeleteDialog(false);
+      setShowDeleteConfirmDialog(false);
       setItemToDelete(null);
     } catch (error) {
       console.error('Delete error:', error);
@@ -437,8 +470,25 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh folders
-        onCreateFolder();
+        // Update local state
+        setFolders(prev => {
+          const updateFolderStar = (items: FileItem[]): FileItem[] => {
+            return items.map(folder => {
+              if (folder.id === id) {
+                return { ...folder, starred: !currentStarred };
+              }
+              if (folder.children) {
+                return {
+                  ...folder,
+                  children: updateFolderStar(folder.children)
+                };
+              }
+              return folder;
+            });
+          };
+          
+          return updateFolderStar(prev);
+        });
       } else {
         const { error } = await supabase
           .from('files')
@@ -447,8 +497,14 @@ export function UnifiedFileBrowser({
         
         if (error) throw error;
         
-        // Refresh files
-        onUpload();
+        // Update local state
+        setFilteredFiles(prev => 
+          prev.map(file => 
+            file.id === id 
+              ? { ...file, starred: !currentStarred } 
+              : file
+          )
+        );
       }
       
       toast({
@@ -488,6 +544,13 @@ export function UnifiedFileBrowser({
     });
   };
 
+  // Function to get files for the selected folder
+  const getFilesForSelectedFolder = () => {
+    if (!selectedFolder) return filteredFiles;
+    
+    return filteredFiles.filter(file => file.folder_id === selectedFolder);
+  };
+
   const toggleItemSelection = (id: string) => {
     setSelectedItems(prev => {
       if (prev.includes(id)) {
@@ -496,415 +559,6 @@ export function UnifiedFileBrowser({
         return [...prev, id];
       }
     });
-  };
-
-  // Play audio file in the audio player
-  const handlePlayAudio = (file: FileItem) => {
-    if (!file.audio_url) {
-      toast({
-        title: "Playback error",
-        description: "Audio URL is not available",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    // Find folder name for context
-    const folderName = file.folder_id ? 
-      folders.find(f => f.id === file.folder_id)?.name || "Unknown Folder" : 
-      "Root";
-    
-    // Create track object for audio player
-    const track = {
-      id: file.id,
-      title: file.name,
-      duration: "0:00", // We don't have actual duration info
-      artworkUrl: "https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg", // Default artwork
-      projectTitle: folderName,
-      audioUrl: file.audio_url // Add the missing audioUrl property
-    };
-    
-    // Play the track
-    playTrack(track);
-    
-    toast({
-      title: "Now playing",
-      description: `${file.name}`
-    });
-  };
-
-  // File drag and drop functionality
-  const handleFileDrop = async (fileId: string, targetFolderId: string | null) => {
-    try {
-      // Move file to target folder
-      const { error } = await supabase
-        .from('files')
-        .update({ folder_id: targetFolderId })
-        .eq('id', fileId);
-      
-      if (error) throw error;
-      
-      toast({
-        title: "File moved",
-        description: "File has been moved successfully"
-      });
-      
-      // Refresh files
-      onUpload();
-    } catch (error) {
-      toast({
-        title: "Error moving file",
-        description: error instanceof Error ? error.message : "Failed to move file",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Draggable File Component
-  const DraggableFile = ({ file }: { file: FileItem }) => {
-    const [{ isDragging }, drag] = useDrag(() => ({
-      type: 'FILE',
-      item: { id: file.id, type: 'file' },
-      collect: (monitor) => ({
-        isDragging: !!monitor.isDragging()
-      })
-    }));
-
-    // Check if this file is currently playing
-    const isCurrentlyPlaying = currentTrack?.id === file.id;
-
-    // Get folder name for the file if it has a folder_id
-    const folderName = useMemo(() => {
-      if (!file.folder_id) return null;
-      
-      // Find the folder in the flat list
-      const findFolderName = (folderId: string, folderList: FileItem[]): string | null => {
-        for (const folder of folderList) {
-          if (folder.id === folderId) {
-            return folder.name;
-          }
-          
-          if (folder.children) {
-            const childResult = findFolderName(folderId, folder.children);
-            if (childResult) return childResult;
-          }
-        }
-        
-        return null;
-      };
-      
-      return findFolderName(file.folder_id, folders);
-    }, [file.folder_id, folders]);
-
-    return (
-      <div 
-        ref={drag}
-        className={cn(
-          "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
-          isDragging ? "opacity-50" : "",
-          isCurrentlyPlaying ? "bg-primary/20 border-primary shadow-md" : "",
-          selectedItems.includes(file.id) 
-            ? "bg-primary/10 border-primary" 
-            : "hover:shadow-md hover:bg-primary/5"
-        )}
-        onClick={() => toggleItemSelection(file.id)}
-      >
-        <div className="p-2 bg-primary/10 rounded-md relative group">
-          <Music className="h-5 w-5 text-primary" />
-          
-          {/* Play button overlay */}
-          <div 
-            className="absolute inset-0 flex items-center justify-center bg-primary/80 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isCurrentlyPlaying) {
-                togglePlay();
-              } else {
-                handlePlayAudio(file);
-              }
-            }}
-          >
-            {isCurrentlyPlaying && isPlaying ? (
-              <Pause className="h-3 w-3 text-white" />
-            ) : (
-              <Play className="h-3 w-3 text-white" />
-            )}
-          </div>
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <p className={cn(
-              "font-medium truncate",
-              isCurrentlyPlaying && "text-primary"
-            )}>
-              {file.name}
-            </p>
-            {file.starred && (
-              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
-            )}
-            {isCurrentlyPlaying && (
-              <span className="flex-shrink-0 text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                Playing
-              </span>
-            )}
-          </div>
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span>{file.size}</span>
-              <span>•</span>
-              <span className="truncate">{file.modified}</span>
-            </div>
-            {folderName && showAllFiles && (
-              <div className="flex items-center gap-1">
-                <Folder className="h-3 w-3" />
-                <span className="truncate">{folderName}</span>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isCurrentlyPlaying) {
-                togglePlay();
-              } else {
-                handlePlayAudio(file);
-              }
-            }}
-          >
-            {isCurrentlyPlaying && isPlaying ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-          </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                handlePlayAudio(file);
-              }}>
-                <Play className="h-4 w-4 mr-2" />
-                Play
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                handleDownloadFile(file);
-              }}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                setItemToRename({
-                  id: file.id,
-                  name: file.name,
-                  isFolder: false
-                });
-                setNewFileName(file.name);
-                setShowRenameDialog(true);
-              }}>
-                <Edit className="h-4 w-4 mr-2" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                handleToggleStar(file.id, false, !!file.starred);
-              }}>
-                <Star className={cn(
-                  "h-4 w-4 mr-2",
-                  file.starred && "fill-yellow-400 text-yellow-400"
-                )} />
-                {file.starred ? 'Unstar' : 'Star'}
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="text-red-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setItemToDelete({
-                    id: file.id,
-                    name: file.name,
-                    isFolder: false,
-                    filePath: file.file_path
-                  });
-                  setShowDeleteDialog(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    );
-  };
-
-  // Droppable Folder Component
-  const DroppableFolder = ({ folder, depth = 0 }: { folder: FileItem, depth?: number }) => {
-    const [{ isOver }, drop] = useDrop(() => ({
-      accept: 'FILE',
-      drop: (item: { id: string, type: string }) => {
-        if (item.type === 'file') {
-          handleFileDrop(item.id, folder.id);
-        }
-      },
-      collect: (monitor) => ({
-        isOver: !!monitor.isOver()
-      })
-    }));
-
-    return (
-      <div 
-        ref={drop}
-        className={cn(
-          "transition-all duration-200",
-          isOver && "bg-primary/10 rounded-md"
-        )}
-      >
-        <div className="flex items-center">
-          <Button 
-            variant={selectedFolder === folder.id ? "secondary" : "ghost"}
-            className={cn(
-              "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md",
-              "transition-all duration-200 hover:bg-primary/10",
-              selectedFolder === folder.id && "bg-primary/15 hover:bg-primary/20",
-              depth > 0 && `pl-${4 + depth * 4}`
-            )}
-            onClick={() => {
-              selectFolder(folder.id);
-              if (folder.children?.length) {
-                toggleFolder(folder.id);
-              }
-            }}
-          >
-            <div className="flex items-center gap-1.5 min-w-[24px]">
-              {folder.children?.length ? (
-                <div className="transition-transform duration-200" 
-                     style={{ transform: expandedFolders[folder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                  <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                </div>
-              ) : (
-                <div className="w-4" />
-              )}
-              <Folder className={cn(
-                "h-4 w-4 flex-shrink-0",
-                selectedFolder === folder.id ? "text-primary" : "text-muted-foreground"
-              )} />
-            </div>
-            <span className="truncate">{folder.name}</span>
-          </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => {
-                setItemToRename({
-                  id: folder.id,
-                  name: folder.name,
-                  isFolder: true
-                });
-                setNewFileName(folder.name);
-                setShowRenameDialog(true);
-              }}>
-                <Edit className="h-4 w-4 mr-2" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleToggleStar(folder.id, true, !!folder.starred)}>
-                <Star className={cn(
-                  "h-4 w-4 mr-2",
-                  folder.starred && "fill-yellow-400 text-yellow-400"
-                )} />
-                {folder.starred ? 'Unstar' : 'Star'}
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="text-red-500"
-                onClick={() => {
-                  setItemToDelete({
-                    id: folder.id,
-                    name: folder.name,
-                    isFolder: true
-                  });
-                  setShowDeleteDialog(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        
-        {/* Render subfolders if expanded */}
-        <div className={cn(
-          "space-y-0.5 overflow-hidden transition-all duration-200",
-          expandedFolders[folder.id] ? "max-h-96" : "max-h-0"
-        )}>
-          {folder.children?.filter(item => item.type === 'folder').map((subfolder) => (
-            <DroppableFolder key={subfolder.id} folder={subfolder} depth={depth + 1} />
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  // Root level droppable area
-  const RootDroppable = () => {
-    const [{ isOver }, drop] = useDrop(() => ({
-      accept: 'FILE',
-      drop: (item: { id: string, type: string }) => {
-        if (item.type === 'file') {
-          handleFileDrop(item.id, null);
-        }
-      },
-      collect: (monitor) => ({
-        isOver: !!monitor.isOver()
-      })
-    }));
-
-    return (
-      <div 
-        ref={drop}
-        className={cn(
-          "transition-all duration-200",
-          isOver && "bg-primary/10 rounded-md"
-        )}
-      >
-        <Button 
-          variant={selectedFolder === null ? "secondary" : "ghost"}
-          className={cn(
-            "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
-            "transition-all duration-200 hover:bg-primary/10",
-            selectedFolder === null && "bg-primary/15 hover:bg-primary/20"
-          )}
-          onClick={() => selectFolder(null)}
-        >
-          <FileIcon className="h-4 w-4 text-primary" />
-          <span>All Files</span>
-        </Button>
-      </div>
-    );
   };
 
   return (
@@ -950,44 +604,175 @@ export function UnifiedFileBrowser({
             </Button>
           </div>
 
-          <div className="flex items-center justify-between">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              className={cn(
-                "text-xs",
-                showAllFiles ? "text-primary font-medium" : "text-muted-foreground"
-              )}
-              onClick={() => setShowAllFiles(true)}
-            >
-              Show All Files
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              className={cn(
-                "text-xs",
-                !showAllFiles ? "text-primary font-medium" : "text-muted-foreground"
-              )}
-              onClick={() => setShowAllFiles(false)}
-            >
-              Filter by Folder
-            </Button>
-          </div>
-
           <Separator />
 
           <div className="space-y-2">
+            <Button 
+              variant={selectedFolder === null ? "secondary" : "ghost"}
+              className={cn(
+                "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md mb-2",
+                "transition-all duration-200 hover:bg-primary/10",
+                selectedFolder === null && "bg-primary/15 hover:bg-primary/20"
+              )}
+              onClick={() => selectFolder(null)}
+            >
+              <FileIcon className="h-4 w-4 text-primary" />
+              <span>All Files</span>
+            </Button>
+
             <h3 className="text-sm font-medium mb-2 px-2 flex items-center">
               <Folder className="h-4 w-4 mr-2 text-primary" />
               <span>Folders</span>
             </h3>
-            
             <div className="space-y-0.5 max-h-[300px] overflow-y-auto pr-1">
-              <RootDroppable />
-              
               {folders.map((folder) => (
-                <DroppableFolder key={folder.id} folder={folder} />
+                <div key={folder.id} className="space-y-0.5 transition-all duration-200">
+                  <div className="flex items-center">
+                    <Button 
+                      variant={selectedFolder === folder.id ? "secondary" : "ghost"}
+                      className={cn(
+                        "w-full justify-start gap-2 py-1.5 h-auto text-sm rounded-md",
+                        "transition-all duration-200 hover:bg-primary/10",
+                        selectedFolder === folder.id && "bg-primary/15 hover:bg-primary/20"
+                      )}
+                      onClick={() => {
+                        selectFolder(folder.id);
+                        if (folder.children?.length) {
+                          toggleFolder(folder.id);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-[24px]">
+                        {folder.children?.length ? (
+                          <div className="transition-transform duration-200" 
+                               style={{ transform: expandedFolders[folder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                            <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                          </div>
+                        ) : (
+                          <div className="w-4" />
+                        )}
+                        <Folder className={cn(
+                          "h-4 w-4 flex-shrink-0",
+                          selectedFolder === folder.id ? "text-primary" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      <span className="truncate">{folder.name}</span>
+                    </Button>
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          setItemToRename({
+                            id: folder.id,
+                            name: folder.name,
+                            isFolder: true
+                          });
+                          setNewFileName(folder.name);
+                          setShowRenameDialog(true);
+                        }}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleStar(folder.id, true, !!folder.starred)}>
+                          <Star className={cn(
+                            "h-4 w-4 mr-2",
+                            folder.starred && "fill-yellow-400 text-yellow-400"
+                          )} />
+                          {folder.starred ? 'Unstar' : 'Star'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-red-500"
+                          onClick={() => confirmDeleteItem(folder.id, true, folder.name)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  
+                  {/* Render subfolders if expanded */}
+                  <div className={cn(
+                    "space-y-0.5 overflow-hidden transition-all duration-200",
+                    expandedFolders[folder.id] ? "max-h-96" : "max-h-0"
+                  )}>
+                    {folder.children?.filter(item => item.type === 'folder').map((subfolder) => (
+                      <div key={subfolder.id} className="flex items-center">
+                        <Button 
+                          variant={selectedFolder === subfolder.id ? "secondary" : "ghost"}
+                          className={cn(
+                            "w-full justify-start gap-2 py-1.5 h-auto text-sm pl-8 rounded-md",
+                            "transition-all duration-200 hover:bg-primary/10",
+                            selectedFolder === subfolder.id && "bg-primary/15 hover:bg-primary/20"
+                          )}
+                          onClick={() => {
+                            selectFolder(subfolder.id);
+                            if (subfolder.children?.length) {
+                              toggleFolder(subfolder.id);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-[24px]">
+                            {subfolder.children?.length ? (
+                              <div className="transition-transform duration-200" 
+                                   style={{ transform: expandedFolders[subfolder.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                              </div>
+                            ) : (
+                              <div className="w-4" />
+                            )}
+                            <Folder className={cn(
+                              "h-4 w-4 flex-shrink-0",
+                              selectedFolder === subfolder.id ? "text-primary" : "text-muted-foreground"
+                            )} />
+                          </div>
+                          <span className="truncate">{subfolder.name}</span>
+                        </Button>
+                        
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 ml-1">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                              setItemToRename({
+                                id: subfolder.id,
+                                name: subfolder.name,
+                                isFolder: true
+                              });
+                              setNewFileName(subfolder.name);
+                              setShowRenameDialog(true);
+                            }}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleToggleStar(subfolder.id, true, !!subfolder.starred)}>
+                              <Star className={cn(
+                                "h-4 w-4 mr-2",
+                                subfolder.starred && "fill-yellow-400 text-yellow-400"
+                              )} />
+                              {subfolder.starred ? 'Unstar' : 'Star'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-red-500"
+                              onClick={() => confirmDeleteItem(subfolder.id, true, subfolder.name)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -1013,7 +798,6 @@ export function UnifiedFileBrowser({
                         selectFolder(item.id);
                       } else {
                         // Handle file selection
-                        toggleItemSelection(item.id);
                       }
                     }}
                   >
@@ -1033,17 +817,11 @@ export function UnifiedFileBrowser({
         <div className="flex-1 flex flex-col">
           <div className="p-4 border-b">
             <h1 className="text-2xl font-bold">
-              {showAllFiles ? 'All Files' : (
-                selectedFolder ? 
-                  folders.find(f => f.id === selectedFolder)?.name || 'Files' : 
-                  'Root Files'
-              )}
+              {selectedFolder ? 
+                folders.find(f => f.id === selectedFolder)?.name || 'Files' : 
+                'All Files'
+              }
             </h1>
-            {showAllFiles && selectedFolder && (
-              <div className="text-sm text-muted-foreground">
-                Showing all files. Selected folder: {folders.find(f => f.id === selectedFolder)?.name}
-              </div>
-            )}
           </div>
 
           <div
@@ -1060,7 +838,7 @@ export function UnifiedFileBrowser({
                 <div className="relative max-w-md mx-auto">
                   <Progress 
                     value={uploadProgress} 
-                    className="h-2" 
+                    className="h-2 bg-muted" 
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">{Math.round(uploadProgress)}%</p>
@@ -1078,7 +856,7 @@ export function UnifiedFileBrowser({
                           </div>
                           <Progress 
                             value={file.progress} 
-                            className="h-1" 
+                            className="h-1 bg-muted/50" 
                           />
                         </div>
                       ))}
@@ -1103,19 +881,93 @@ export function UnifiedFileBrowser({
           </div>
 
           <div className="flex-1 p-4">
-            {filteredFiles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                <FileIcon className="h-12 w-12 mb-4 opacity-30" />
-                <p>No files found</p>
-                <p className="text-sm">Upload files or select a different folder</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredFiles.map((file) => (
-                  <DraggableFile key={file.id} file={file} />
-                ))}
-              </div>
-            )}
+            {/* Display files for selected folder */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {getFilesForSelectedFolder().map((file) => (
+                <div 
+                  key={file.id} 
+                  className={cn(
+                    "p-3 border rounded-lg transition-all duration-200 flex items-center gap-3 cursor-pointer",
+                    selectedItems.includes(file.id) 
+                      ? "bg-primary/10 border-primary" 
+                      : "hover:shadow-md hover:bg-primary/5"
+                  )}
+                  onClick={() => toggleItemSelection(file.id)}
+                >
+                  <div className="p-2 bg-primary/10 rounded-md">
+                    <FileIcon className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <p className="font-medium truncate">{file.name}</p>
+                      {file.starred && (
+                        <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{file.size}</span>
+                      <span>•</span>
+                      <span>{file.modified}</span>
+                    </div>
+                  </div>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadFile(file);
+                      }}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        setItemToRename({
+                          id: file.id,
+                          name: file.name,
+                          isFolder: false
+                        });
+                        setNewFileName(file.name);
+                        setShowRenameDialog(true);
+                      }}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleStar(file.id, false, !!file.starred);
+                      }}>
+                        <Star className={cn(
+                          "h-4 w-4 mr-2",
+                          file.starred && "fill-yellow-400 text-yellow-400"
+                        )} />
+                        {file.starred ? 'Unstar' : 'Star'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDeleteItem(file.id, false, file.name, file.file_path);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1194,34 +1046,33 @@ export function UnifiedFileBrowser({
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirmDialog} onOpenChange={setShowDeleteConfirmDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Delete {itemToDelete?.isFolder ? 'Folder' : 'File'}</DialogTitle>
-            <DialogDescription className="pt-2">
-              Are you sure you want to delete <span className="font-medium">{itemToDelete?.name}</span>?
-              {itemToDelete?.isFolder && (
-                <span className="block mt-2 text-destructive">
-                  This will also delete all files and subfolders inside this folder.
-                </span>
-              )}
-              This action cannot be undone.
-            </DialogDescription>
+            <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <div className="py-4">
+            <p>Are you sure you want to delete "{itemToDelete?.name}"?</p>
+            {itemToDelete?.isFolder && (
+              <p className="mt-2 text-sm text-destructive flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                This will also delete all files inside this folder.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
             <Button 
               type="button"
               variant="outline"
               onClick={() => {
-                setShowDeleteDialog(false);
+                setShowDeleteConfirmDialog(false);
                 setItemToDelete(null);
               }}
             >
               Cancel
             </Button>
             <Button 
-              type="button" 
               variant="destructive"
               onClick={handleDeleteItem}
             >
