@@ -51,7 +51,12 @@ const trendingProjects = [
       { id: "1-3", title: "Sunset Dreams", duration: "3:56" }
     ],
     totalTracks: 3,
-    isPopular: true
+    isPopular: true,
+    creator: {
+      name: "Alex Johnson",
+      avatar: "https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg",
+      tag: "Producer"
+    }
   },
   {
     id: "2",
@@ -63,7 +68,12 @@ const trendingProjects = [
       { id: "2-3", title: "Urban Flow", duration: "3:48" }
     ],
     totalTracks: 3,
-    isPopular: true
+    isPopular: true,
+    creator: {
+      name: "Sarah Smith",
+      avatar: "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg",
+      tag: "Beat Maker"
+    }
   },
   {
     id: "3",
@@ -75,7 +85,12 @@ const trendingProjects = [
       { id: "3-3", title: "Heart & Soul", duration: "4:22" }
     ],
     totalTracks: 3,
-    isPopular: false
+    isPopular: false,
+    creator: {
+      name: "Mike Wilson",
+      avatar: "https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg",
+      tag: "Soul Artist"
+    }
   },
   {
     id: "4",
@@ -87,7 +102,12 @@ const trendingProjects = [
       { id: "4-3", title: "Future Beats", duration: "3:42" }
     ],
     totalTracks: 3,
-    isPopular: true
+    isPopular: true,
+    creator: {
+      name: "Emily Chen",
+      avatar: "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg",
+      tag: "Electronic Producer"
+    }
   },
   {
     id: "5",
@@ -99,7 +119,12 @@ const trendingProjects = [
       { id: "5-3", title: "Night Rider", duration: "3:45" }
     ],
     totalTracks: 3,
-    isPopular: false
+    isPopular: false,
+    creator: {
+      name: "Jason Lee",
+      avatar: "https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg",
+      tag: "Urban Producer"
+    }
   },
   {
     id: "6",
@@ -111,7 +136,12 @@ const trendingProjects = [
       { id: "6-3", title: "Pure Sound", duration: "3:38" }
     ],
     totalTracks: 3,
-    isPopular: true
+    isPopular: true,
+    creator: {
+      name: "Sophia Martinez",
+      avatar: "https://images.pexels.com/photos/1587009/pexels-photo-1587009.jpeg",
+      tag: "Acoustic Artist"
+    }
   },
   {
     id: "7",
@@ -123,7 +153,12 @@ const trendingProjects = [
       { id: "7-3", title: "Jazz Life", duration: "4:15" }
     ],
     totalTracks: 3,
-    isPopular: false
+    isPopular: false,
+    creator: {
+      name: "David Kim",
+      avatar: "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg",
+      tag: "Jazz Musician"
+    }
   },
   {
     id: "8",
@@ -135,7 +170,12 @@ const trendingProjects = [
       { id: "8-3", title: "Electronic Vibes", duration: "3:48" }
     ],
     totalTracks: 3,
-    isPopular: true
+    isPopular: true,
+    creator: {
+      name: "Olivia Taylor",
+      avatar: "https://images.pexels.com/photos/1036623/pexels-photo-1036623.jpeg",
+      tag: "EDM Producer"
+    }
   }
 ];
 

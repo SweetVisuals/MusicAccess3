@@ -1,4 +1,4 @@
-import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare, ShoppingCart, DollarSign } from 'lucide-react';
+import { Play, Heart, Download, MoreVertical, ListMusic, Plus, User, Tag, MessageSquare, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/@/ui/button';
 import { Badge } from '@/components/@/ui/badge';
 import { useAudioPlayer, type Track } from '@/contexts/audio-player-context';
@@ -23,7 +23,6 @@ interface ProjectCardProps {
       avatar?: string;
       tag?: string;
     };
-    price?: number;
   };
   variant?: 'grid' | 'list';
   id: string;
@@ -41,9 +40,6 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
     avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
     tag: 'Producer'
   };
-
-  // Default price if not provided
-  const price = project.price || 29.99;
 
   return (
     <div id={id} className="group relative rounded-lg overflow-hidden bg-muted/50 hover:bg-muted transition-all duration-300 shadow-sm hover:shadow-md">
@@ -111,39 +107,30 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
           </div>
         </div>
 
-        {/* Creator Info */}
-        <div className="flex items-center gap-3 pt-2 border-t">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={creator.avatar} alt={creator.name} />
-            <AvatarFallback>{creator.name[0]}</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{creator.name}</p>
-            <div className="flex items-center gap-1">
-              <Tag className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{creator.tag}</span>
+        {/* Creator Info and Action Icons */}
+        <div className="flex items-center justify-between pt-2 border-t">
+          <div className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={creator.avatar} alt={creator.name} />
+              <AvatarFallback>{creator.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate">{creator.name}</p>
+              <div className="flex items-center gap-1">
+                <Tag className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground truncate">{creator.tag}</span>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Purchase Actions */}
-        <div className="flex items-center justify-between pt-2 border-t">
-          <div className="flex items-center gap-1">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <span className="font-semibold">${price}</span>
-          </div>
+          
           <div className="flex items-center gap-3">
-            <ShoppingCart 
-              className="h-5 w-5 text-primary cursor-pointer hover:scale-110 transition-transform" 
-              title="Buy Now"
-            />
             <MessageSquare 
-              className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-primary hover:scale-110 transition-all" 
+              className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-primary hover:scale-110 transition-all" 
               title="Contact Creator"
             />
-            <Heart 
-              className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-red-500 hover:scale-110 transition-all" 
-              title="Add to Favorites"
+            <ShoppingCart 
+              className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-primary hover:scale-110 transition-all" 
+              title="Buy Now"
             />
           </div>
         </div>
