@@ -50,7 +50,7 @@ export function SiteHeader() {
           .from('user_wallets')
           .select('balance')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
         
         if (error) throw error
         
