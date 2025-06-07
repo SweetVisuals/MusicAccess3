@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import useProfile from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
 import { Service } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/@/ui/card';
+import { Card, CardContent } from '@/components/@/ui/card';
 import { Badge } from '@/components/@/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Clock, DollarSign, Star, CheckCircle, MessageSquare, Calendar, ArrowRight, ShoppingCart } from 'lucide-react';
+import { Briefcase, Clock, CheckCircle, MessageSquare, Star, ShoppingCart, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/@/ui/avatar';
-import { Separator } from '@/components/@/ui/separator';
 
 const AlbumsTab = () => {
   const { profile } = useProfile();
@@ -59,6 +58,7 @@ const AlbumsTab = () => {
           You haven't created any services yet. Services allow you to offer your skills to potential clients.
         </p>
         <Button>
+          <Plus className="h-4 w-4 mr-2" />
           Create Your First Service
         </Button>
       </div>
@@ -66,98 +66,71 @@ const AlbumsTab = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
       {services.map((service) => (
-        <Card key={service.id} className="overflow-hidden border-2 hover:border-primary/20 transition-all duration-300 hover:shadow-lg">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={profile?.avatarUrl} />
-                  <AvatarFallback>{profile?.full_name?.[0] || 'U'}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-lg">{service.title}</CardTitle>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={service.is_active ? "default" : "secondary"} className="text-xs">
-                      {service.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                      <Briefcase className="h-3 w-3" />
-                      {service.type}
-                    </Badge>
-                    {service.is_featured && (
-                      <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                        <Star className="h-3 w-3 text-yellow-500" />
-                        Featured
-                      </Badge>
-                    )}
-                  </div>
+        <Card key={service.id} className="overflow-hidden border hover:border-primary/20 transition-all duration-300 hover:shadow-md">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={profile?.avatarUrl} />
+                <AvatarFallback>{profile?.full_name?.[0] || 'U'}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-base truncate">{service.title}</h3>
+                <div className="flex items-center gap-1">
+                  <Badge variant={service.is_active ? "default" : "secondary"} className="text-[10px] px-1 h-4">
+                    {service.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{service.type}</span>
                 </div>
               </div>
-              {service.price && (
-                <div className="text-right">
-                  <div className="text-xl font-bold text-primary">${service.price}</div>
-                  <div className="text-xs text-muted-foreground">Starting price</div>
-                </div>
+              {service.is_featured && (
+                <Badge variant="secondary" className="h-5 flex items-center gap-1">
+                  <Star className="h-3 w-3 text-yellow-500" />
+                  <span className="text-[10px]">Featured</span>
+                </Badge>
               )}
             </div>
-          </CardHeader>
-          
-          <CardContent className="pb-3">
-            <p className="text-sm text-muted-foreground mb-4">
-              {service.description.length > 150 
-                ? `${service.description.substring(0, 150)}...` 
-                : service.description}
+            
+            <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+              {service.description}
             </p>
             
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {service.delivery_time && (
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="p-1.5 rounded-full bg-primary/10">
-                    <Clock className="h-3.5 w-3.5 text-primary" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                {service.delivery_time && (
+                  <div className="flex items-center gap-1 text-xs">
+                    <Clock className="h-3 w-3 text-primary" />
+                    <span>{service.delivery_time}</span>
                   </div>
-                  <span>{service.delivery_time} delivery</span>
-                </div>
-              )}
-              
-              {service.revisions !== null && service.revisions !== undefined && (
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="p-1.5 rounded-full bg-primary/10">
-                    <CheckCircle className="h-3.5 w-3.5 text-primary" />
+                )}
+                
+                {service.revisions !== null && service.revisions !== undefined && (
+                  <div className="flex items-center gap-1 text-xs">
+                    <CheckCircle className="h-3 w-3 text-primary" />
+                    <span>{service.revisions} rev.</span>
                   </div>
-                  <span>{service.revisions} revision{service.revisions !== 1 ? 's' : ''}</span>
-                </div>
-              )}
-              
-              <div className="flex items-center gap-2 text-sm">
-                <div className="p-1.5 rounded-full bg-primary/10">
-                  <Calendar className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span>Since {new Date(service.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                )}
               </div>
               
-              <div className="flex items-center gap-2 text-sm">
-                <div className="p-1.5 rounded-full bg-primary/10">
-                  <Star className="h-3.5 w-3.5 text-primary" />
+              {service.price && (
+                <div className="text-right">
+                  <div className="text-sm font-bold text-primary">${service.price}</div>
                 </div>
-                <span>5.0 (12 reviews)</span>
-              </div>
+              )}
+            </div>
+            
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1 flex-1">
+                <MessageSquare className="h-3 w-3" />
+                Contact
+              </Button>
+              <Button size="sm" className="h-8 text-xs gap-1 flex-1">
+                <ShoppingCart className="h-3 w-3" />
+                Book Now
+              </Button>
             </div>
           </CardContent>
-          
-          <Separator />
-          
-          <CardFooter className="flex justify-between pt-3">
-            <Button variant="outline" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Contact
-            </Button>
-            <Button className="gap-2">
-              <ShoppingCart className="h-4 w-4" />
-              Book Now
-            </Button>
-          </CardFooter>
         </Card>
       ))}
     </div>
