@@ -24,30 +24,65 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
 
   const handleUpload = async (files: FileWithMetadata[]) => {
     if (!uploadType || !files || files.length === 0 || !user?.id) return;
+    const file = files[0];
     
     try {
       setIsUploading(true);
       
-      // The actual upload is handled in the UploadDialog component
-      // Here we just need to update the local state
+      // Generate a unique file path
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uploadType}_${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+      
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('profiles')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (uploadError) throw uploadError;
+      
+      // Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profiles')
+        .getPublicUrl(filePath);
+      
+      // Update profile with the new URL
       if (profile) {
-        if (uploadType === 'avatar') {
-          toast.success('Profile picture updated successfully');
-        } else {
-          toast.success('Banner image updated successfully');
-        }
+        const updates = {
+          ...profile,
+          [uploadType === 'avatar' ? 'profile_url' : 'banner_url']: publicUrl
+        };
+        
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', user.id);
+        
+        if (updateError) throw updateError;
+        
+        // Update local state
+        updateProfile({
+          ...profile,
+          [uploadType === 'avatar' ? 'avatarUrl' : 'bannerUrl']: publicUrl
+        });
+        
+        toast.success(`${uploadType.charAt(0).toUpperCase() + uploadType.slice(1)} updated successfully`);
       }
     } catch (error) {
-      console.error('Error updating profile image:', error);
-      toast.error('Failed to update image');
+      console.error('Error uploading image:', error);
+      toast.error(`Failed to upload ${uploadType}`);
     } finally {
       setIsUploading(false);
+      setUploadType(null);
     }
   };
 
   if (!user) return null;
 
-  const name = profile?.full_name || ''; 
+  const name = profile?.full_name || ''; // Changed from name to full_name
   const bannerUrl = profile?.bannerUrl || '';
   const avatarUrl = profile?.avatarUrl || '';
 
@@ -63,7 +98,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
+            <div className="w-full h-full bg-gray-200 dark:bg-gray-800 animate-fade-in flex items-center justify-center transition-all duration-300">
               <Camera className="h-12 w-12 text-gray-400 opacity-40" />
             </div>
           )}
@@ -88,8 +123,8 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-500 animate-fade-in flex items-center justify-center transition-all duration-300">
-                    <Camera className="h-10 w-10 text-gray-300 opacity-40" />
+                  <div className="w-full h-full bg-gray-300 dark:bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
+                    <Camera className="h-10 w-10 text-gray-400 opacity-40" />
                   </div>
                 )}
                 <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -136,7 +171,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                   {/* Profile Info Tags */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {profile?.location && (
-                      <Button variant="outline\" size="sm\" className="rounded-full">
+                      <Button variant="outline" size="sm" className="rounded-full">
                         <MapPin className="h-3.5 w-3.5 mr-1" />
                         {profile?.location}
                       </Button>
@@ -186,7 +221,6 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
           open={true}
           onOpenChange={(open) => !open && setUploadType(null)}
           onUpload={handleUpload}
-          type={uploadType}
         />
       )}
     </>

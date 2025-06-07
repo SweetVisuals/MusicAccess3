@@ -1,178 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import useProfile from '@/hooks/useProfile';
 import { useTracks } from '@/hooks/useTracks';
 import ProjectCard from '../music/ProjectCard';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/auth-context';
-import { ProfileStats } from '@/lib/types';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Plus, Music, Upload } from 'lucide-react';
+import { FileMusic } from 'lucide-react';
 
 interface ProjectsTabProps {
   viewMode?: 'grid' | 'list';
   sortBy?: 'latest' | 'popular' | 'oldest';
   tracks?: any[];
-  stats?: ProfileStats | null;
+  stats?: any;
 }
 
 const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks: propTracks, stats }: ProjectsTabProps) => {
   const { profile } = useProfile();
-  const { user } = useAuth();
   const userId = profile?.id;
   const { tracks: hookTracks, loading, error } = useTracks(userId || '');
-  const [projects, setProjects] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Use tracks from props if provided, otherwise use from hook
+  
+  // Use provided tracks prop if available, otherwise use tracks from hook
   const tracks = propTracks || hookTracks;
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      if (!userId) return;
-      
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        
-        // Format projects with tracks
-        const formattedProjects = await Promise.all((data || []).map(async (project) => {
-          // Get tracks for this project
-          const { data: projectFiles } = await supabase
-            .from('project_files')
-            .select('file_id')
-            .eq('project_id', project.id);
-          
-          const fileIds = projectFiles?.map(pf => pf.file_id) || [];
-          
-          // Get file details
-          const { data: files } = await supabase
-            .from('files')
-            .select('*')
-            .in('id', fileIds);
-          
-          // Format tracks
-          const projectTracks = files?.map(file => ({
-            id: file.id,
-            title: file.name,
-            duration: '3:45', // Placeholder, would need to extract from file metadata
-            file_url: file.file_url
-          })) || [];
-          
-          return {
-            id: project.id,
-            title: project.title,
-            artworkUrl: project.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
-            tracks: projectTracks,
-            totalTracks: projectTracks.length,
-            isPopular: project.is_featured,
-            creator: {
-              name: profile?.full_name || 'Unknown Artist',
-              avatar: profile?.avatarUrl,
-              tag: project.type || 'Project'
-            }
-          };
-        }));
-        
-        setProjects(formattedProjects);
-      } catch (err) {
-        console.error('Error fetching projects:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [userId, profile]);
-
-  const handleDeleteProject = async (projectId: string) => {
-    try {
-      // Remove the project from the local state
-      setProjects(prev => prev.filter(p => p.id !== projectId));
-      
-      // Show success message
-      toast.success("Project deleted successfully");
-    } catch (error) {
-      console.error('Error handling project deletion:', error);
-    }
-  };
-
   if (!userId) return <div className="p-4">Please log in to view your projects.</div>;
-  if (loading || isLoading) return <div className="p-4 animate-pulse">Loading projects...</div>;
+  if (loading) return <div className="p-4 animate-pulse">Loading projects...</div>;
   if (error) return <div className="p-4 text-destructive">Error: {error}</div>;
   
-  // Combine tracks and projects
-  const allItems = [
-    ...projects,
-    ...tracks.map(track => ({
-      id: track.id,
-      title: track.title || 'Untitled Track',
-      artworkUrl: track.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
-      tracks: [
-        {
-          id: track.id,
-          title: track.title || 'Untitled Track',
-          duration: '3:45', // Placeholder
-          file_url: track.file_url
-        }
-      ],
-      totalTracks: 1,
-      isPopular: false,
-      creator: {
-        name: profile?.full_name || 'Unknown Artist',
-        avatar: profile?.avatarUrl,
-        tag: 'Track'
-      }
-    }))
-  ];
-
-  // Optionally sort items
-  let sortedItems = [...allItems];
-  if (sortBy === 'latest') sortedItems.sort((a, b) => new Date(b.created_at || Date.now()).getTime() - new Date(a.created_at || Date.now()).getTime());
-  if (sortBy === 'oldest') sortedItems.sort((a, b) => new Date(a.created_at || Date.now()).getTime() - new Date(b.created_at || Date.now()).getTime());
+  // Optionally sort tracks (implement sort logic as needed)
+  let sortedTracks = [...tracks];
+  if (sortBy === 'latest') sortedTracks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  if (sortBy === 'oldest') sortedTracks.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   // Add 'popular' sorting if you have a metric
 
-  if (sortedItems.length === 0) {
+  if (!sortedTracks.length) {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Projects</h2>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Project
-          </Button>
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="bg-muted/50 p-6 rounded-full mb-4">
+          <FileMusic className="h-12 w-12 text-muted-foreground" />
         </div>
-        
-        <div className="text-center py-12 border-2 border-dashed rounded-lg">
-          <Music className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">No projects found</h3>
-          <p className="text-muted-foreground mt-2 mb-4">
-            Create your first project to showcase your work
-          </p>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Project
-          </Button>
-        </div>
+        <h3 className="text-xl font-medium mb-2">No projects found</h3>
+        <p className="text-muted-foreground max-w-md">
+          You haven't uploaded any projects yet. Start creating and sharing your music with the world.
+        </p>
       </div>
     );
   }
 
   return (
     <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-fade-in' : 'gap-4'}`}>
-      {sortedItems.map((item) => (
+      {sortedTracks.map((track) => (
         <ProjectCard
-          key={item.id}
-          project={item}
-          variant="grid"
-          id={item.id}
-          onDelete={() => handleDeleteProject(item.id)}
+          key={track.id}
+          project={{
+            id: track.id,
+            title: track.title || 'Untitled Project',
+            artworkUrl: track.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
+            tracks: [],
+            totalTracks: 1,
+            isPopular: false,
+          }}
+          variant={viewMode}
+          id={track.id}
         />
       ))}
     </div>
