@@ -8,6 +8,8 @@ import { UploadDialog } from './UploadDialog';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { DialogTrigger } from '@/components/ui/dialog';
 import { User, Profile, ProfileStats } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 interface ProfileHeaderProps {
   user: User;
@@ -18,30 +20,34 @@ interface ProfileHeaderProps {
 
 const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }: ProfileHeaderProps) => {
   const [uploadType, setUploadType] = useState<'avatar' | 'banner' | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleUpload = async (files: FileWithMetadata[]) => {
-    if (!uploadType || !files || files.length === 0) return;
-    const file = files[0];
+    if (!uploadType || !files || files.length === 0 || !user?.id) return;
     
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        if (profile) {
-          updateProfile({
-            ...profile,
-            [uploadType === 'avatar' ? 'avatarUrl' : 'bannerUrl']: result
-          });
+      setIsUploading(true);
+      
+      // The actual upload is handled in the UploadDialog component
+      // Here we just need to update the local state
+      if (profile) {
+        if (uploadType === 'avatar') {
+          toast.success('Profile picture updated successfully');
+        } else {
+          toast.success('Banner image updated successfully');
         }
-      };
+      }
     } catch (error) {
-      console.error('Error uploading image:', error);
+      console.error('Error updating profile image:', error);
+      toast.error('Failed to update image');
+    } finally {
+      setIsUploading(false);
     }
   };
 
   if (!user) return null;
 
-  const name = profile?.full_name || ''; // Changed from name to full_name
+  const name = profile?.full_name || ''; 
   const bannerUrl = profile?.bannerUrl || '';
   const avatarUrl = profile?.avatarUrl || '';
 
@@ -130,7 +136,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                   {/* Profile Info Tags */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {profile?.location && (
-                      <Button variant="outline\" size="sm\" className="rounded-full">
+                      <Button variant="outline" size="sm" className="rounded-full">
                         <MapPin className="h-3.5 w-3.5 mr-1" />
                         {profile?.location}
                       </Button>
@@ -180,6 +186,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
           open={true}
           onOpenChange={(open) => !open && setUploadType(null)}
           onUpload={handleUpload}
+          type={uploadType}
         />
       )}
     </>

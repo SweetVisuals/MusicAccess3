@@ -8,6 +8,7 @@ export type Track = {
   artist?: string;
   projectTitle?: string;
   audioUrl?: string; // URL to the audio file
+  file_url?: string; // Alternative URL field from database
 };
 
 type AudioPlayerContextType = {
@@ -47,11 +48,13 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     audio.addEventListener('timeupdate', updateProgress);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
     
     return () => {
       audio.removeEventListener('timeupdate', updateProgress);
       audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.addEventListener('ended', handleEnded);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
       audio.pause();
     };
   }, []);
@@ -59,8 +62,15 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   // Update audio source when track changes
   useEffect(() => {
     if (currentTrack && audioRef.current) {
-      // Use the track's audio URL or fall back to a default
-      audioRef.current.src = currentTrack.audioUrl || '';
+      // Use the track's audio URL or file_url as fallback
+      const audioSource = currentTrack.audioUrl || currentTrack.file_url || '';
+      
+      if (!audioSource) {
+        console.error('No audio source available for track:', currentTrack);
+        return;
+      }
+      
+      audioRef.current.src = audioSource;
       
       if (isPlaying) {
         audioRef.current.play().catch(error => {
@@ -89,6 +99,11 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
     }
+  };
+  
+  const handleError = (e: Event) => {
+    console.error('Error playing audio:', e);
+    setIsPlaying(false);
   };
 
   const playTrack = (track: Track) => {
