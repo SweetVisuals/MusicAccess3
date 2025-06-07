@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/auth-context';
 import { ProfileStats } from '@/lib/types';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Plus, Music, Upload } from 'lucide-react';
 
 interface ProjectsTabProps {
   viewMode?: 'grid' | 'list';
@@ -138,11 +140,26 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks: propTracks,
 
   if (sortedItems.length === 0) {
     return (
-      <div className="p-4 text-center">
-        <p className="text-muted-foreground mb-4">No projects or tracks found.</p>
-        {user && user.id === userId && (
-          <p className="text-sm">Start by uploading your first track or creating a project.</p>
-        )}
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">Projects</h2>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </Button>
+        </div>
+        
+        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+          <Music className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">No projects found</h3>
+          <p className="text-muted-foreground mt-2 mb-4">
+            Create your first project to showcase your work
+          </p>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </Button>
+        </div>
       </div>
     );
   }
