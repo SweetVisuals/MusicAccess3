@@ -16,12 +16,13 @@ import { useAuth } from "@/contexts/auth-context"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-import { useLocation } from "react-router-dom"
+import { useLocation, Link } from "react-router-dom"
 
 export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth()
   const [gemBalance, setGemBalance] = useState<number>(0)
   const [walletBalance, setWalletBalance] = useState<number>(0)
+  const [unreadMessages, setUnreadMessages] = useState<number>(0)
   const location = useLocation()
 
   // Get the current page name from the location
@@ -103,8 +104,15 @@ export function SiteHeader() {
       }
     }
 
+    // Simulate fetching unread message count
+    const fetchUnreadMessages = () => {
+      // In a real app, this would be an API call
+      setUnreadMessages(Math.floor(Math.random() * 5))
+    }
+
     fetchUserStats()
     fetchUserWallet()
+    fetchUnreadMessages()
 
     // Listen for gem balance updates
     const handleGemBalanceUpdate = () => {
@@ -159,15 +167,23 @@ export function SiteHeader() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative">
                     <MessageSquare className="h-5 w-5" />
-                    <span className="absolute -right-0 mr-2 mt-2 -top-0 h-2.5 w-2.5 rounded-full bg-blue-500" />
+                    {unreadMessages > 0 && (
+                      <span className="absolute -right-0 mr-2 mt-2 -top-0 h-2.5 w-2.5 rounded-full bg-blue-500" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel>Messages</DropdownMenuLabel>
+                  <DropdownMenuLabel className="flex items-center justify-between">
+                    <span>Messages</span>
+                    {unreadMessages > 0 && (
+                      <Badge variant="secondary" className="ml-2">{unreadMessages} new</Badge>
+                    )}
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
                     <div className="flex items-center gap-2">
                       <Avatar className="h-6 w-6">
+                        <AvatarImage src="https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg" />
                         <AvatarFallback>JD</AvatarFallback>
                       </Avatar>
                       <div>
@@ -179,17 +195,18 @@ export function SiteHeader() {
                   <DropdownMenuItem>
                     <div className="flex items-center gap-2">
                       <Avatar className="h-6 w-6">
+                        <AvatarImage src="https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg" />
                         <AvatarFallback>AS</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">Alex Smith</p>
+                        <p className="text-sm font-medium">Sarah Smith</p>
                         <p className="text-xs text-muted-foreground">Let's collaborate!</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="justify-center text-sm text-blue-500">
-                    View all messages
+                  <DropdownMenuItem asChild className="justify-center text-sm text-blue-500">
+                    <Link to="/messages">View all messages</Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -245,16 +262,25 @@ export function SiteHeader() {
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <a href={`/user/${user.user_metadata?.username || 'profile'}`}>
+                    <Link to={`/user/${user?.user_metadata?.username || 'profile'}`}>
                       <User className="mr-2 h-4 w-4" />
                       Profile
-                    </a>
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <a href="/user/dashboard">
+                    <Link to="/user/dashboard">
                       <LayoutGrid className="mr-2 h-4 w-4" />
                       Dashboard
-                    </a>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/messages">
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Messages
+                      {unreadMessages > 0 && (
+                        <Badge variant="secondary" className="ml-auto">{unreadMessages}</Badge>
+                      )}
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Settings className="mr-2 h-4 w-4" />

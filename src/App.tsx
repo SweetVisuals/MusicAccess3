@@ -17,6 +17,7 @@ import FindTalentPage from "@/app/home/find-talent"
 import TutorialsPage from "@/app/home/tutorials"
 import MarketingPage from "@/app/home/marketing"
 import CollaboratePage from "@/app/home/collaborate"
+import MessagesPage from "@/app/messages/messages"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { SidebarProvider } from "@/components/@/ui/sidebar"
 import { AudioPlayerProvider } from "@/contexts/audio-player-context"
@@ -148,6 +149,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <WalletPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/messages" 
+            element={
+              <ProtectedRoute>
+                <MessagesPage />
               </ProtectedRoute>
             } 
           />
