@@ -17,7 +17,6 @@ import FindTalentPage from "@/app/home/find-talent"
 import TutorialsPage from "@/app/home/tutorials"
 import MarketingPage from "@/app/home/marketing"
 import CollaboratePage from "@/app/home/collaborate"
-import MessagesPage from "@/app/messages/messages"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { SidebarProvider } from "@/components/@/ui/sidebar"
 import { AudioPlayerProvider } from "@/contexts/audio-player-context"
@@ -28,6 +27,7 @@ import { PageLoading } from "@/components/ui/page-loading"
 import { UserProfileRedirect } from "@/components/auth/UserProfileRedirect"
 import { UploadDialog } from "@/components/profile/UploadDialog"
 import UploadPage from "@/app/upload/filemanager"
+import UploadWizard from "@/app/upload/upload-wizard"
 import FilesPage from "@/app/files/files"
 
 function App() {
@@ -153,14 +153,6 @@ function App() {
             } 
           />
           <Route 
-            path="/messages" 
-            element={
-              <ProtectedRoute>
-                <MessagesPage />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
             path="/auth/login" 
             element={user ? <Navigate to="/user/dashboard\" replace /> : <LoginPage />} 
           />
@@ -182,6 +174,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <UploadPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route
+            path="/upload/wizard" 
+            element={
+              <ProtectedRoute>
+                <UploadWizard />
               </ProtectedRoute>
             } 
           />
