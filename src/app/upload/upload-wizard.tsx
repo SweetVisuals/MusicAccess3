@@ -1,145 +1,357 @@
-import { useState } from "react";
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppSidebar } from "@/components/dashboard/layout/app-sidebar";
-import { SiteHeader } from "@/components/dashboard/layout/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/@/ui/sidebar";
+import { SiteHeader } from "@/components/dashboard/layout/site-header";
 import { 
+  Music, 
+  Image, 
+  FileText, 
+  Video, 
   Upload, 
-  FolderPlus, 
-  Package, 
-  DollarSign, 
-  Send, 
-  CheckCircle,
-  ChevronRight,
+  ChevronRight, 
   ChevronLeft,
-  Music,
-  Folder,
-  Tag,
-  Globe,
-  Archive
-} from "lucide-react";
+  Check
+} from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/@/ui/badge";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/@/ui/tabs";
-import { UnifiedFileBrowser } from "@/components/upload/upload-with-browser";
-import { useFiles } from "@/hooks/useFiles";
-import { useAuth } from "@/contexts/auth-context";
+import { Card, CardContent } from "@/components/@/ui/card";
+import { useDropzone } from 'react-dropzone';
+import { Progress } from "@/components/@/ui/progress";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/auth-context";
+import { supabase } from "@/lib/supabase";
+import { v4 as uuidv4 } from 'uuid';
 
 export default function UploadWizard() {
   const { user } = useAuth();
-  const { 
-    files, 
-    folders, 
-    loading, 
-    fetchFiles, 
-    fetchFolders, 
-    createFolder, 
-    uploadFile 
-  } = useFiles(user?.id || '');
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('audio');
+  const [step, setStep] = useState(1);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [metadata, setMetadata] = useState({
+    title: '',
+    description: '',
+    genre: '',
+    bpm: '',
+    key: '',
+    isPublic: false,
+    tags: [] as string[],
+  });
 
-  const [activeTab, setActiveTab] = useState("upload");
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [projectType, setProjectType] = useState<"soundpack" | "beattape" | "project">("soundpack");
-  const [individualPrice, setIndividualPrice] = useState("");
-  const [packagePrice, setPackagePrice] = useState("");
-  const [publishOption, setPublishOption] = useState<"public" | "private" | "order">("private");
-  const [isComplete, setIsComplete] = useState(false);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: acceptedFiles => {
+      setFiles(acceptedFiles);
+    },
+    accept: {
+      'audio/*': ['.mp3', '.wav', '.flac', '.aac', '.ogg'],
+      'image/*': activeTab === 'image' ? ['.jpg', '.jpeg', '.png', '.gif'] : [],
+      'video/*': activeTab === 'video' ? ['.mp4', '.mov', '.avi'] : [],
+      'application/pdf': activeTab === 'document' ? ['.pdf'] : [],
+      'text/plain': activeTab === 'document' ? ['.txt'] : [],
+      'application/msword': activeTab === 'document' ? ['.doc', '.docx'] : [],
+    },
+    maxFiles: 10,
+    multiple: true
+  });
 
-  // Function to handle file selection
-  const handleFileSelection = (fileId: string) => {
-    setSelectedFiles(prev => {
-      if (prev.includes(fileId)) {
-        return prev.filter(id => id !== fileId);
-      } else {
-        return [...prev, fileId];
-      }
-    });
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setFiles([]);
+    setStep(1);
   };
 
-  // Function to handle project creation
-  const handleCreateProject = () => {
-    if (!projectName) {
-      toast.error("Please enter a project name");
-      return;
-    }
-
-    if (selectedFiles.length === 0) {
-      toast.error("Please select at least one file");
-      return;
-    }
-
-    // Here you would typically save the project to the database
-    toast.success("Project created successfully!");
-    setActiveTab("pricing");
-  };
-
-  // Function to handle pricing setup
-  const handleSetupPricing = () => {
-    if (packagePrice && isNaN(Number(packagePrice))) {
-      toast.error("Package price must be a number");
-      return;
-    }
-
-    if (individualPrice && isNaN(Number(individualPrice))) {
-      toast.error("Individual price must be a number");
-      return;
-    }
-
-    // Here you would typically save the pricing to the database
-    toast.success("Pricing set up successfully!");
-    setActiveTab("publish");
-  };
-
-  // Function to handle publishing
-  const handlePublish = () => {
-    // Here you would typically publish the project
-    toast.success(`Project ${publishOption === "public" ? "published" : publishOption === "order" ? "submitted to order" : "saved to files"}!`);
-    setIsComplete(true);
-    setActiveTab("complete");
-  };
-
-  // Function to reset the wizard
-  const handleReset = () => {
-    setSelectedFiles([]);
-    setProjectName("");
-    setProjectDescription("");
-    setProjectType("soundpack");
-    setIndividualPrice("");
-    setPackagePrice("");
-    setPublishOption("private");
-    setIsComplete(false);
-    setActiveTab("upload");
-  };
-
-  // Function to navigate to next tab
   const handleNext = () => {
-    if (activeTab === "upload") {
-      setActiveTab("organize");
-    } else if (activeTab === "organize") {
-      setActiveTab("pricing");
-    } else if (activeTab === "pricing") {
-      setActiveTab("publish");
-    } else if (activeTab === "publish") {
-      setActiveTab("complete");
+    if (step === 1 && files.length === 0) {
+      toast.error('Please select at least one file to upload');
+      return;
+    }
+    
+    if (step === 2 && !metadata.title) {
+      toast.error('Please enter a title');
+      return;
+    }
+    
+    if (step < 3) {
+      setStep(step + 1);
+    } else {
+      handleUpload();
     }
   };
 
-  // Function to navigate to previous tab
-  const handlePrevious = () => {
-    if (activeTab === "organize") {
-      setActiveTab("upload");
-    } else if (activeTab === "pricing") {
-      setActiveTab("organize");
-    } else if (activeTab === "publish") {
-      setActiveTab("pricing");
-    } else if (activeTab === "complete") {
-      setActiveTab("publish");
+  const handleBack = () => {
+    if (step > 1) {
+      setStep(step - 1);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!user) {
+      toast.error('You must be logged in to upload files');
+      return;
+    }
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      // Process each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileId = uuidv4();
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${user.id}/${fileId}.${fileExt}`;
+        
+        // Update progress
+        const currentProgress = Math.round((i / files.length) * 100);
+        setUploadProgress(currentProgress);
+        
+        // Upload to Supabase Storage
+        const { error: storageError } = await supabase.storage
+          .from('audio_files')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (storageError) throw storageError;
+        
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('audio_files')
+          .getPublicUrl(filePath);
+        
+        // Add to database
+        const { error: dbError } = await supabase
+          .from('audio_tracks')
+          .insert([{
+            title: metadata.title || file.name,
+            description: metadata.description,
+            file_path: filePath,
+            duration: 0, // This would need to be calculated
+            user_id: user.id,
+            genre: metadata.genre,
+            bpm: metadata.bpm ? parseInt(metadata.bpm) : null,
+            key: metadata.key,
+            is_public: metadata.isPublic
+          }]);
+        
+        if (dbError) throw dbError;
+      }
+      
+      // Set final progress
+      setUploadProgress(100);
+      
+      // Show success message
+      toast.success('Files uploaded successfully');
+      
+      // Redirect after a short delay
+      setTimeout(() => {
+        navigate('/files');
+      }, 1500);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload files');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (step) {
+      case 1:
+        return (
+          <div className="space-y-6">
+            <div 
+              {...getRootProps()} 
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/30 hover:border-primary/50'
+              }`}
+            >
+              <input {...getInputProps()} />
+              <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">Drag & drop files here</h3>
+              <p className="text-muted-foreground mb-2">or click to browse your files</p>
+              <p className="text-sm text-muted-foreground">
+                {activeTab === 'audio' && 'Supported formats: MP3, WAV, FLAC, AAC, OGG'}
+                {activeTab === 'image' && 'Supported formats: JPG, PNG, GIF'}
+                {activeTab === 'video' && 'Supported formats: MP4, MOV, AVI'}
+                {activeTab === 'document' && 'Supported formats: PDF, TXT, DOC, DOCX'}
+              </p>
+            </div>
+            
+            {files.length > 0 && (
+              <div className="border rounded-lg p-4">
+                <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                      <div className="flex items-center gap-2">
+                        {activeTab === 'audio' && <Music className="h-4 w-4 text-primary" />}
+                        {activeTab === 'image' && <Image className="h-4 w-4 text-primary" />}
+                        {activeTab === 'video' && <Video className="h-4 w-4 text-primary" />}
+                        {activeTab === 'document' && <FileText className="h-4 w-4 text-primary" />}
+                        <span className="text-sm truncate max-w-md">{file.name}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      
+      case 2:
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Title</Label>
+                  <Input 
+                    id="title" 
+                    value={metadata.title} 
+                    onChange={(e) => setMetadata({...metadata, title: e.target.value})}
+                    placeholder="Enter title"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea 
+                    id="description" 
+                    value={metadata.description} 
+                    onChange={(e) => setMetadata({...metadata, description: e.target.value})}
+                    placeholder="Enter description"
+                    rows={4}
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="genre">Genre</Label>
+                  <Input 
+                    id="genre" 
+                    value={metadata.genre} 
+                    onChange={(e) => setMetadata({...metadata, genre: e.target.value})}
+                    placeholder="e.g. Hip Hop, Electronic"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bpm">BPM</Label>
+                    <Input 
+                      id="bpm" 
+                      type="number" 
+                      value={metadata.bpm} 
+                      onChange={(e) => setMetadata({...metadata, bpm: e.target.value})}
+                      placeholder="e.g. 120"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="key">Key</Label>
+                    <Input 
+                      id="key" 
+                      value={metadata.key} 
+                      onChange={(e) => setMetadata({...metadata, key: e.target.value})}
+                      placeholder="e.g. C Minor"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2 pt-4">
+                  <input
+                    type="checkbox"
+                    id="isPublic"
+                    checked={metadata.isPublic}
+                    onChange={(e) => setMetadata({...metadata, isPublic: e.target.checked})}
+                    className="rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <Label htmlFor="isPublic">Make this upload public</Label>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 3:
+        return (
+          <div className="space-y-6">
+            <div className="border rounded-lg p-6">
+              <h3 className="font-medium text-lg mb-4">Review Your Upload</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Files</h4>
+                    <p className="font-medium">{files.length} file(s) selected</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Title</h4>
+                    <p className="font-medium">{metadata.title || 'Untitled'}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Description</h4>
+                    <p className="font-medium">{metadata.description || 'No description'}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Genre</h4>
+                    <p className="font-medium">{metadata.genre || 'Not specified'}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">BPM</h4>
+                      <p className="font-medium">{metadata.bpm || 'Not specified'}</p>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Key</h4>
+                      <p className="font-medium">{metadata.key || 'Not specified'}</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Visibility</h4>
+                    <Badge variant={metadata.isPublic ? "default" : "secondary"}>
+                      {metadata.isPublic ? 'Public' : 'Private'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              
+              {isUploading && (
+                <div className="mt-6 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Uploading...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="h-2" />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
     }
   };
 
@@ -151,372 +363,121 @@ export default function UploadWizard() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-6 animate-fade-in p-8">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold">Upload Wizard</h1>
-                <p className="text-muted-foreground">Create and publish your music projects</p>
-              </div>
+              <h1 className="text-2xl font-bold">Upload Files</h1>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <div className="flex justify-between items-center mb-6">
-                <TabsList className="grid grid-cols-5 w-full max-w-3xl">
-                  <TabsTrigger value="upload" className="flex items-center gap-2">
-                    <Upload className="h-4 w-4" />
-                    <span className="hidden sm:inline">Upload</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="organize" className="flex items-center gap-2">
-                    <FolderPlus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Organize</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="pricing" className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" />
-                    <span className="hidden sm:inline">Pricing</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="publish" className="flex items-center gap-2">
-                    <Send className="h-4 w-4" />
-                    <span className="hidden sm:inline">Publish</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="complete" className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="hidden sm:inline">Complete</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+              <TabsList>
+                <TabsTrigger value="audio" className="flex items-center gap-2">
+                  <Music className="h-4 w-4" />
+                  Audio
+                </TabsTrigger>
+                <TabsTrigger value="image" className="flex items-center gap-2">
+                  <Image className="h-4 w-4" />
+                  Images
+                </TabsTrigger>
+                <TabsTrigger value="video" className="flex items-center gap-2">
+                  <Video className="h-4 w-4" />
+                  Videos
+                </TabsTrigger>
+                <TabsTrigger value="document" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Documents
+                </TabsTrigger>
+              </TabsList>
 
-              <TabsContent value="upload" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Upload Files</CardTitle>
-                    <CardDescription>Upload your audio files and organize them into folders</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[500px]">
-                    <UnifiedFileBrowser 
-                      files={files}
-                      folders={folders}
-                      onUpload={() => {
-                        fetchFiles();
-                        fetchFolders();
-                      }}
-                      onCreateFolder={() => {
-                        fetchFolders();
-                      }}
-                      uploadFile={uploadFile}
-                    />
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <div></div>
-                    <Button onClick={handleNext}>
-                      Next
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="organize" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Organize Project</CardTitle>
-                    <CardDescription>Create a project from your uploaded files</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="project-name">Project Name</Label>
-                          <Input 
-                            id="project-name" 
-                            placeholder="Enter project name" 
-                            value={projectName}
-                            onChange={(e) => setProjectName(e.target.value)}
-                          />
+              <Card className="mt-6">
+                <CardContent className="pt-6">
+                  {/* Step Indicator */}
+                  <div className="mb-8">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          step >= 1 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {step > 1 ? <Check className="h-4 w-4" /> : 1}
                         </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="project-description">Description</Label>
-                          <Textarea 
-                            id="project-description" 
-                            placeholder="Describe your project" 
-                            value={projectDescription}
-                            onChange={(e) => setProjectDescription(e.target.value)}
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label>Project Type</Label>
-                          <div className="flex flex-wrap gap-2">
-                            <Button 
-                              variant={projectType === "soundpack" ? "default" : "outline"}
-                              onClick={() => setProjectType("soundpack")}
-                              className="flex items-center gap-2"
-                            >
-                              <Package className="h-4 w-4" />
-                              Sound Pack
-                            </Button>
-                            <Button 
-                              variant={projectType === "beattape" ? "default" : "outline"}
-                              onClick={() => setProjectType("beattape")}
-                              className="flex items-center gap-2"
-                            >
-                              <Music className="h-4 w-4" />
-                              Beat Tape
-                            </Button>
-                            <Button 
-                              variant={projectType === "project" ? "default" : "outline"}
-                              onClick={() => setProjectType("project")}
-                              className="flex items-center gap-2"
-                            >
-                              <Folder className="h-4 w-4" />
-                              Project
-                            </Button>
-                          </div>
-                        </div>
+                        <div className={`h-1 w-12 ${step > 1 ? 'bg-primary' : 'bg-muted'}`}></div>
                       </div>
                       
-                      <div className="space-y-4">
-                        <Label>Select Files</Label>
-                        <div className="border rounded-md h-[300px] overflow-y-auto p-2">
-                          {loading ? (
-                            <div className="flex items-center justify-center h-full">
-                              <p>Loading files...</p>
-                            </div>
-                          ) : files.length === 0 ? (
-                            <div className="flex items-center justify-center h-full">
-                              <p>No files found. Please upload files first.</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {files.map((file) => (
-                                <div 
-                                  key={file.id}
-                                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer ${
-                                    selectedFiles.includes(file.id) ? 'bg-primary/10 border border-primary' : 'hover:bg-muted'
-                                  }`}
-                                  onClick={() => handleFileSelection(file.id)}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <Music className="h-4 w-4 text-primary" />
-                                    <span>{file.name}</span>
-                                  </div>
-                                  <Badge variant="outline">{file.size}</Badge>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                      <div className="flex items-center">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          step >= 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {step > 2 ? <Check className="h-4 w-4" /> : 2}
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {selectedFiles.length} files selected
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <Button variant="outline" onClick={handlePrevious}>
-                      <ChevronLeft className="mr-2 h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button onClick={handleNext}>
-                      Next
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="pricing" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Set Pricing</CardTitle>
-                    <CardDescription>Set prices for your project and individual files</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="package-price">Package Price ($)</Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              id="package-price" 
-                              className="pl-9" 
-                              placeholder="0.00"
-                              value={packagePrice}
-                              onChange={(e) => setPackagePrice(e.target.value)}
-                            />
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            Price for the entire {projectType}
-                          </p>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="individual-price">Individual File Price ($)</Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              id="individual-price" 
-                              className="pl-9" 
-                              placeholder="0.00"
-                              value={individualPrice}
-                              onChange={(e) => setIndividualPrice(e.target.value)}
-                            />
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            Price for each individual file
-                          </p>
-                        </div>
+                        <div className={`h-1 w-12 ${step > 2 ? 'bg-primary' : 'bg-muted'}`}></div>
                       </div>
                       
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>License Options</Label>
-                          <div className="space-y-2">
-                            <div className="flex items-center space-x-2">
-                              <input type="checkbox" id="license-basic" className="rounded border-gray-300" />
-                              <Label htmlFor="license-basic">Basic License</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <input type="checkbox" id="license-premium" className="rounded border-gray-300" />
-                              <Label htmlFor="license-premium">Premium License</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <input type="checkbox" id="license-exclusive" className="rounded border-gray-300" />
-                              <Label htmlFor="license-exclusive">Exclusive License</Label>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label>Tags</Label>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge className="flex items-center gap-1">
-                              <Tag className="h-3 w-3" />
-                              Hip Hop
-                            </Badge>
-                            <Badge className="flex items-center gap-1">
-                              <Tag className="h-3 w-3" />
-                              Trap
-                            </Badge>
-                            <Badge className="flex items-center gap-1">
-                              <Tag className="h-3 w-3" />
-                              Lo-Fi
-                            </Badge>
-                            <Button variant="outline" size="sm" className="h-6">
-                              + Add Tag
-                            </Button>
-                          </div>
+                      <div className="flex items-center">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          step >= 3 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          3
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <Button variant="outline" onClick={handlePrevious}>
-                      <ChevronLeft className="mr-2 h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button onClick={handleNext}>
-                      Next
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="publish" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Publish</CardTitle>
-                    <CardDescription>Choose how to publish your project</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Card className={`cursor-pointer transition-all ${publishOption === "public" ? "border-primary" : ""}`} onClick={() => setPublishOption("public")}>
-                        <CardContent className="pt-6">
-                          <div className="flex flex-col items-center text-center space-y-2">
-                            <Globe className="h-8 w-8 text-primary" />
-                            <h3 className="font-medium">Publish to Page</h3>
-                            <p className="text-sm text-muted-foreground">Make your project public on your profile</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card className={`cursor-pointer transition-all ${publishOption === "order" ? "border-primary" : ""}`} onClick={() => setPublishOption("order")}>
-                        <CardContent className="pt-6">
-                          <div className="flex flex-col items-center text-center space-y-2">
-                            <Send className="h-8 w-8 text-primary" />
-                            <h3 className="font-medium">Submit to Order</h3>
-                            <p className="text-sm text-muted-foreground">Submit to an existing client order</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card className={`cursor-pointer transition-all ${publishOption === "private" ? "border-primary" : ""}`} onClick={() => setPublishOption("private")}>
-                        <CardContent className="pt-6">
-                          <div className="flex flex-col items-center text-center space-y-2">
-                            <Archive className="h-8 w-8 text-primary" />
-                            <h3 className="font-medium">Keep in Files</h3>
-                            <p className="text-sm text-muted-foreground">Save to your files without publishing</p>
-                          </div>
-                        </CardContent>
-                      </Card>
                     </div>
                     
-                    {publishOption === "order" && (
-                      <div className="space-y-4 pt-4">
-                        <Label htmlFor="order-select">Select Order</Label>
-                        <select 
-                          id="order-select"
-                          className="w-full p-2 border rounded-md"
-                        >
-                          <option value="">Select an order</option>
-                          <option value="order1">Order #1 - Custom Beat (Client: John Doe)</option>
-                          <option value="order2">Order #2 - Mixing Service (Client: Jane Smith)</option>
-                        </select>
-                      </div>
-                    )}
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <Button variant="outline" onClick={handlePrevious}>
-                      <ChevronLeft className="mr-2 h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button onClick={handlePublish}>
-                      {publishOption === "public" ? "Publish" : publishOption === "order" ? "Submit" : "Save"}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </TabsContent>
+                    <div className="flex justify-between mt-2 text-sm">
+                      <span className={step >= 1 ? 'text-primary font-medium' : 'text-muted-foreground'}>
+                        Select Files
+                      </span>
+                      <span className={step >= 2 ? 'text-primary font-medium' : 'text-muted-foreground'}>
+                        Add Details
+                      </span>
+                      <span className={step >= 3 ? 'text-primary font-medium' : 'text-muted-foreground'}>
+                        Review & Upload
+                      </span>
+                    </div>
+                  </div>
 
-              <TabsContent value="complete" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Complete!</CardTitle>
-                    <CardDescription>Your project has been successfully processed</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col items-center justify-center py-10 space-y-6">
-                    <div className="rounded-full bg-green-100 p-3">
-                      <CheckCircle className="h-12 w-12 text-green-600" />
-                    </div>
-                    <div className="text-center space-y-2">
-                      <h3 className="text-xl font-medium">
-                        {publishOption === "public" 
-                          ? "Your project has been published!" 
-                          : publishOption === "order" 
-                            ? "Your project has been submitted to the order!" 
-                            : "Your project has been saved to your files!"}
-                      </h3>
-                      <p className="text-muted-foreground">
-                        {projectName && <span>Project Name: <strong>{projectName}</strong><br /></span>}
-                        {selectedFiles.length > 0 && <span>Files: <strong>{selectedFiles.length}</strong><br /></span>}
-                        {packagePrice && <span>Package Price: <strong>${packagePrice}</strong></span>}
-                      </p>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex justify-center">
-                    <Button onClick={handleReset}>Create Another Project</Button>
-                  </CardFooter>
-                </Card>
-              </TabsContent>
+                  <TabsContent value="audio" className="mt-0">
+                    {renderStepContent()}
+                  </TabsContent>
+                  
+                  <TabsContent value="image" className="mt-0">
+                    {renderStepContent()}
+                  </TabsContent>
+                  
+                  <TabsContent value="video" className="mt-0">
+                    {renderStepContent()}
+                  </TabsContent>
+                  
+                  <TabsContent value="document" className="mt-0">
+                    {renderStepContent()}
+                  </TabsContent>
+
+                  <div className="flex justify-between mt-8">
+                    <Button 
+                      variant="outline" 
+                      onClick={handleBack}
+                      disabled={step === 1 || isUploading}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                    
+                    <Button 
+                      onClick={handleNext}
+                      disabled={isUploading}
+                    >
+                      {step < 3 ? (
+                        <>
+                          Next
+                          <ChevronRight className="h-4 w-4 ml-2" />
+                        </>
+                      ) : isUploading ? (
+                        'Uploading...'
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Files
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </Tabs>
           </div>
         </div>
