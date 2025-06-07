@@ -13,7 +13,6 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/auth-context';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 interface ProjectCardProps {
   project: {
@@ -178,7 +177,13 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
                   className="ml-1 p-1.5 rounded-full hover:bg-primary/10 transition-colors"
                   title="Give a gem"
                 >
-                  <Gem className="h-4 w-4 text-violet-700 hover:text-violet-500 transition-colors" />
+                  <Gem 
+                    className={`h-4 w-4 transition-colors ${
+                      (trackGems[track.id] || 0) > 0 
+                        ? 'text-violet-500' 
+                        : 'text-gray-400 hover:text-violet-500'
+                    }`} 
+                  />
                   {(trackGems[track.id] || 0) > 0 && (
                     <span className="absolute -top-1 -right-1 bg-violet-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
                       {trackGems[track.id]}
