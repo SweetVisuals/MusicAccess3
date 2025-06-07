@@ -2,7 +2,9 @@ import React from 'react';
 import useProfile from '@/hooks/useProfile';
 import { useTracks } from '@/hooks/useTracks';
 import ProjectCard from '../music/ProjectCard';
-import { FileMusic } from 'lucide-react';
+import { FileMusic, Plus, Upload } from 'lucide-react';
+import { Button } from '@/components/@/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 interface ProjectsTabProps {
   viewMode?: 'grid' | 'list';
@@ -15,6 +17,7 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks: propTracks,
   const { profile } = useProfile();
   const userId = profile?.id;
   const { tracks: hookTracks, loading, error } = useTracks(userId || '');
+  const navigate = useNavigate();
   
   // Use provided tracks prop if available, otherwise use tracks from hook
   const tracks = propTracks || hookTracks;
@@ -31,35 +34,57 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks: propTracks,
 
   if (!sortedTracks.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="bg-muted/50 p-6 rounded-full mb-4">
-          <FileMusic className="h-12 w-12 text-muted-foreground" />
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">Projects</h2>
+          <Button onClick={() => navigate('/upload')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </Button>
         </div>
-        <h3 className="text-xl font-medium mb-2">No projects found</h3>
-        <p className="text-muted-foreground max-w-md">
-          You haven't uploaded any projects yet. Start creating and sharing your music with the world.
-        </p>
+        
+        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+          <FileMusic className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">No projects found</h3>
+          <p className="text-muted-foreground mt-2 mb-4">
+            Upload your first project to showcase your music
+          </p>
+          <Button onClick={() => navigate('/upload')}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload Project
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-fade-in' : 'gap-4'}`}>
-      {sortedTracks.map((track) => (
-        <ProjectCard
-          key={track.id}
-          project={{
-            id: track.id,
-            title: track.title || 'Untitled Project',
-            artworkUrl: track.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
-            tracks: [],
-            totalTracks: 1,
-            isPopular: false,
-          }}
-          variant={viewMode}
-          id={track.id}
-        />
-      ))}
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Projects</h2>
+        <Button onClick={() => navigate('/upload')}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create Project
+        </Button>
+      </div>
+      
+      <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'gap-4'}`}>
+        {sortedTracks.map((track) => (
+          <ProjectCard
+            key={track.id}
+            project={{
+              id: track.id,
+              title: track.title || 'Untitled Project',
+              artworkUrl: track.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
+              tracks: [],
+              totalTracks: 1,
+              isPopular: false,
+            }}
+            variant={viewMode}
+            id={track.id}
+          />
+        ))}
+      </div>
     </div>
   );
 };

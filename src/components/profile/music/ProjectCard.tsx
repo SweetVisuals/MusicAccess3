@@ -46,7 +46,7 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
   // Default creator info if not provided
   const creator = project.creator || {
     name: 'Artist Name',
-    avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
+    avatar: '',
     tag: 'Producer'
   };
 
@@ -151,14 +151,14 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
         {/* Project Header */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-medium">{project.title}</h3>
+            <h3 className="font-medium line-clamp-1">{project.title}</h3>
             <div className="text-xs text-muted-foreground">
               {project.totalTracks} track{project.totalTracks !== 1 ? 's' : ''}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {project.isPopular && (
-              <Badge variant="secondary\" className="shrink-0 text-xs">
+              <Badge variant="secondary" className="shrink-0 text-xs">
                 Popular
               </Badge>
             )}
@@ -275,8 +275,11 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
         <div className="flex items-center justify-between pt-2 border-t">
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={creator.avatar} alt={creator.name} />
-              <AvatarFallback>{creator.name[0]}</AvatarFallback>
+              {creator.avatar ? (
+                <AvatarImage src={creator.avatar} alt={creator.name} />
+              ) : (
+                <AvatarFallback>{creator.name[0]}</AvatarFallback>
+              )}
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium truncate">{creator.name}</p>
