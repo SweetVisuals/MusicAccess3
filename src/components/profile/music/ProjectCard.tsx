@@ -23,7 +23,6 @@ interface ProjectCardProps {
     totalTracks?: number;
     isPopular?: boolean;
     creator?: {
-      id?: string; // Add id to the creator object
       name: string;
       avatar?: string;
       tag?: string;
@@ -31,7 +30,7 @@ interface ProjectCardProps {
   };
   variant?: 'grid' | 'list';
   id: string;
-  onDelete?: (projectId: string) => void;
+  onDelete?: () => void;
 }
 
 const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
@@ -46,7 +45,6 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
 
   // Default creator info if not provided
   const creator = project.creator || {
-    id: user?.id, // Use current user's ID as fallback
     name: 'Artist Name',
     avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
     tag: 'Producer'
@@ -117,15 +115,11 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
       toast.error("Please sign in to delete projects");
       return;
     }
-    
-    if (!confirm("Are you sure you want to delete this project?")) {
-      return;
-    }
-    
-    setIsDeleting(true);
-    
+
     try {
-      // Delete project from database
+      setIsDeleting(true);
+      
+      // Delete the project from the database
       const { error } = await supabase
         .from('projects')
         .delete()
@@ -138,7 +132,10 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
       
       // Call the onDelete callback if provided
       if (onDelete) {
-        onDelete(project.id);
+        onDelete();
+      } else {
+        // Refresh the page if no callback is provided
+        window.location.reload();
       }
     } catch (error) {
       console.error('Error deleting project:', error);
@@ -159,9 +156,9 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
               {project.totalTracks} track{project.totalTracks !== 1 ? 's' : ''}
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {project.isPopular && (
-              <Badge variant="secondary\" className="shrink-0 text-xs">
+              <Badge variant="secondary" className="shrink-0 text-xs">
                 Popular
               </Badge>
             )}
@@ -172,34 +169,26 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  // Add to playlist functionality
-                }}>
-                  <ListMusic className="h-4 w-4 mr-2" />
-                  Add to playlist
+                <DropdownMenuItem>
+                  <Heart className="h-4 w-4 mr-2" />
+                  Like
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  // Download functionality
-                }}>
+                <DropdownMenuItem>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add to Playlist
+                </DropdownMenuItem>
+                <DropdownMenuItem>
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </DropdownMenuItem>
-                {user && (creator.id === user.id || project.creator?.id === user.id) && (
+                {user && user.id && (
                   <DropdownMenuItem 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDeleteProject();
-                    }}
-                    className="text-destructive focus:text-destructive"
+                    className="text-red-500"
+                    onClick={handleDeleteProject}
                     disabled={isDeleting}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
-                    {isDeleting ? 'Deleting...' : 'Delete Project'}
+                    {isDeleting ? 'Deleting...' : 'Delete'}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -273,6 +262,11 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
                 </button>
               </div>
             ))}
+            {!project.tracks || project.tracks.length === 0 ? (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                No tracks available
+              </div>
+            ) : null}
           </div>
         </div>
 
