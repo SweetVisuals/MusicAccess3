@@ -43,26 +43,47 @@ import { FileItem } from '@/lib/types';
 
 interface UnifiedFileBrowserProps {
   initialFiles?: FileItem[];
-  files?: FileItem[];
-  folders?: FileItem[];
-  onUpload?: () => void;
-  onCreateFolder?: () => void;
-  uploadFile?: (file: File, folderId?: string | null, onProgress?: (progress: number) => void) => Promise<{success: boolean}>;
 }
 
 export function UnifiedFileBrowser({ 
-  initialFiles,
-  files = [],
-  folders = [],
-  onUpload,
-  onCreateFolder,
-  uploadFile
+  initialFiles
 }: UnifiedFileBrowserProps) {
   const { user } = useAuth();
+  const [files, setFiles] = useState<FileItem[]>(initialFiles || []);
+  const [folders, setFolders] = useState<FileItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<{name: string, progress: number}[]>([]);
   const MAX_UPLOAD_FILES = 10;
+
+  // Load folders from database on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const loadFolders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('folders')
+          .select('*')
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        setFolders(data || []);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load folders",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFolders();
+  }, [user?.id]);
 
   // Filter files based on search query
   useEffect(() => {
@@ -105,10 +126,34 @@ export function UnifiedFileBrowser({
     }
     
     try {
-      if (onCreateFolder) {
-        onCreateFolder();
-      }
+      // Create new folder object for database
+      const newFolder = {
+        id: uuidv4(),
+        name: newFolderName.trim(),
+        user_id: user?.id,
+        parent_id: selectedFolder || null
+      };
       
+      // Save to database
+      const { data, error } = await supabase
+        .from('folders')
+        .insert(newFolder)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Create UI folder object
+      const uiFolder: FileItem = {
+        id: data.id,
+        name: newFolderName.trim(),
+        type: 'folder',
+        modified: new Date().toISOString().split('T')[0],
+        children: []
+      };
+      
+      // Update local folders state
+      setFolders(prev => [...prev, uiFolder]);
       setNewFolderName('');
       setShowNewFolderDialog(false);
       
@@ -139,7 +184,52 @@ export function UnifiedFileBrowser({
     }
     
     try {
-      // Rename logic would go here
+      if (itemToRename.isFolder) {
+        // Rename folder in database
+        const { error } = await supabase
+          .from('folders')
+          .update({ name: newFileName.trim() })
+          .eq('id', itemToRename.id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFolders(prev => {
+          const updateFolderName = (items: FileItem[]): FileItem[] => {
+            return items.map(folder => {
+              if (folder.id === itemToRename.id) {
+                return { ...folder, name: newFileName.trim() };
+              }
+              if (folder.children) {
+                return {
+                  ...folder,
+                  children: updateFolderName(folder.children)
+                };
+              }
+              return folder;
+            });
+          };
+          
+          return updateFolderName(prev);
+        });
+      } else {
+        // Rename file in database
+        const { error } = await supabase
+          .from('files')
+          .update({ name: newFileName.trim() })
+          .eq('id', itemToRename.id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFilteredFiles(prev => 
+          prev.map(file => 
+            file.id === itemToRename.id 
+              ? { ...file, name: newFileName.trim() } 
+              : file
+          )
+        );
+      }
       
       setShowRenameDialog(false);
       setItemToRename(null);
@@ -172,16 +262,12 @@ export function UnifiedFileBrowser({
   };
 
   const handleUploadClick = () => {
-    if (onUpload) {
-      onUpload();
-    } else {
-      fileInputRef.current?.click();
-    }
+    fileInputRef.current?.click();
   };
 
   const handleFileUpload = async () => {
     const files = fileInputRef.current?.files;
-    if (!files || files.length === 0 || !uploadFile) return;
+    if (!files || files.length === 0) return;
     
     // Check if too many files are selected
     if (files.length > MAX_UPLOAD_FILES) {
@@ -229,6 +315,9 @@ export function UnifiedFileBrowser({
         title: "Upload complete",
         description: `Successfully uploaded ${files.length} file${files.length > 1 ? 's' : ''}`,
       });
+      
+      // Refresh the file list
+      fetchFiles();
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -284,7 +373,51 @@ export function UnifiedFileBrowser({
     if (!itemToDelete) return;
     
     try {
-      // Delete logic would go here
+      if (itemToDelete.isFolder) {
+        // Delete folder from database
+        const { error } = await supabase
+          .from('folders')
+          .delete()
+          .eq('id', itemToDelete.id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFolders(prev => {
+          const removeFolderFromTree = (items: FileItem[]): FileItem[] => {
+            return items.filter(item => {
+              if (item.id === itemToDelete.id) return false;
+              if (item.children) {
+                item.children = removeFolderFromTree(item.children);
+              }
+              return true;
+            });
+          };
+          
+          return removeFolderFromTree(prev);
+        });
+      } else {
+        // Delete file from storage if path exists
+        if (itemToDelete.filePath) {
+          const { error: storageError } = await supabase.storage
+            .from('audio_files')
+            .remove([itemToDelete.filePath]);
+          
+          if (storageError) throw storageError;
+        }
+        
+        // Delete file from database
+        const { error } = await supabase
+          .from('files')
+          .delete()
+          .eq('id', itemToDelete.id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFilteredFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
+        setFiles(prev => prev.filter(file => file.id !== itemToDelete.id));
+      }
       
       toast({
         title: "Deleted successfully",
@@ -305,7 +438,50 @@ export function UnifiedFileBrowser({
 
   const handleToggleStar = async (id: string, isFolder: boolean, currentStarred: boolean) => {
     try {
-      // Star toggle logic would go here
+      if (isFolder) {
+        const { error } = await supabase
+          .from('folders')
+          .update({ starred: !currentStarred })
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFolders(prev => {
+          const updateFolderStar = (items: FileItem[]): FileItem[] => {
+            return items.map(folder => {
+              if (folder.id === id) {
+                return { ...folder, starred: !currentStarred };
+              }
+              if (folder.children) {
+                return {
+                  ...folder,
+                  children: updateFolderStar(folder.children)
+                };
+              }
+              return folder;
+            });
+          };
+          
+          return updateFolderStar(prev);
+        });
+      } else {
+        const { error } = await supabase
+          .from('files')
+          .update({ starred: !currentStarred })
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setFilteredFiles(prev => 
+          prev.map(file => 
+            file.id === id 
+              ? { ...file, starred: !currentStarred } 
+              : file
+          )
+        );
+      }
       
       toast({
         title: currentStarred ? "Removed from starred" : "Added to starred",
@@ -342,6 +518,152 @@ export function UnifiedFileBrowser({
       title: "Download started",
       description: `Downloading ${file.name}`
     });
+  };
+
+  // Function to upload a file
+  const uploadFile = async (
+    file: File, 
+    folderId?: string, 
+    onProgress?: (progress: number) => void
+  ) => {
+    try {
+      if (!user?.id) throw new Error("User not authenticated");
+      
+      // Generate unique file path
+      const fileId = uuidv4();
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${fileId}.${fileExt}`;
+      
+      // Upload to Supabase Storage
+      const { error } = await supabase.storage
+        .from('audio_files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        
+      // Simulate progress updates
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += 10;
+        if (progress >= 100) {
+          clearInterval(progressInterval);
+        }
+        if (onProgress) onProgress(progress);
+      }, 300);
+      
+      if (error) throw error;
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('audio_files')
+        .getPublicUrl(filePath);
+      
+      // Add file record to database
+      const { error: dbError } = await supabase
+        .from('files')
+        .insert([{
+          id: fileId,
+          name: file.name,
+          file_url: publicUrl,
+          file_path: filePath,
+          size: file.size,
+          file_type: getFileType(file.type),
+          user_id: user.id,
+          folder_id: folderId || null
+        }]);
+      
+      if (dbError) throw dbError;
+      
+      return { success: true, fileId, url: publicUrl };
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw error;
+    }
+  };
+
+  // Function to get files for the current folder
+  const fetchFiles = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setIsLoading(true);
+      
+      let query = supabase
+        .from('files')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (selectedFolder) {
+        query = query.eq('folder_id', selectedFolder);
+      } else {
+        // Only fetch files with null folder_id (root files)
+        query = query.is('folder_id', null);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      const formattedFiles: FileItem[] = data.map(file => ({
+        id: file.id,
+        name: file.name,
+        type: file.file_type || 'file',
+        size: formatFileSize(file.size),
+        modified: file.updated_at ? new Date(file.updated_at).toISOString().split('T')[0] : 
+                 new Date(file.created_at).toISOString().split('T')[0],
+        audio_url: file.file_url,
+        file_path: file.file_path,
+        folder_id: file.folder_id,
+        starred: file.starred
+      }));
+      
+      setFiles(formattedFiles);
+      setFilteredFiles(formattedFiles);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load files",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper function to format file size
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  // Helper function to determine file type from MIME type
+  function getFileType(mimeType: string): string {
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.includes('pdf')) return 'document';
+    return 'file';
+  }
+
+  // Initialize by fetching files
+  useEffect(() => {
+    if (user?.id) {
+      fetchFiles();
+    }
+  }, [user?.id, selectedFolder]);
+
+  // Function to get files for the selected folder
+  const getFilesForSelectedFolder = () => {
+    if (!selectedFolder) return filteredFiles;
+    
+    return filteredFiles.filter(file => file.folder_id === selectedFolder);
   };
 
   const toggleItemSelection = (id: string) => {
@@ -622,6 +944,15 @@ export function UnifiedFileBrowser({
 
         {/* Main file browser area */}
         <div className="flex-1 flex flex-col">
+          <div className="p-4 border-b">
+            <h1 className="text-2xl font-bold">
+              {selectedFolder ? 
+                folders.find(f => f.id === selectedFolder)?.name || 'Files' : 
+                'All Files'
+              }
+            </h1>
+          </div>
+
           <div
             className={cn(
               "border-2 border-dashed rounded-lg m-4 p-4 text-center",
@@ -679,9 +1010,9 @@ export function UnifiedFileBrowser({
           </div>
 
           <div className="flex-1 p-4">
-            {/* Display files */}
+            {/* Display files for selected folder */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredFiles.map((file) => (
+              {getFilesForSelectedFolder().map((file) => (
                 <div 
                   key={file.id} 
                   className={cn(
