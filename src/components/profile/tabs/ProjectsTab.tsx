@@ -173,6 +173,12 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
     }
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    // Update the local state after successful deletion
+    setProjects(prev => prev.filter(project => project.id !== projectId));
+    // No need to call fetchProjects() as we've already updated the state
+  };
+
   if (!userId) return <div className="p-4">Please log in to view your projects.</div>;
   if (loading && isLoading) return <div className="p-4 animate-pulse">Loading projects...</div>;
   if (error) return <div className="p-4 text-destructive">Error: {error}</div>;
@@ -228,6 +234,7 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
               }}
               variant={viewMode}
               id={project.id}
+              onDelete={handleDeleteProject}
             />
           ))}
         </div>
