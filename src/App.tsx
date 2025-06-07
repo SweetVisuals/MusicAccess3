@@ -26,7 +26,6 @@ import { useEffect, useState } from "react"
 import { PageLoading } from "@/components/ui/page-loading"
 import { UserProfileRedirect } from "@/components/auth/UserProfileRedirect"
 import { UploadDialog } from "@/components/profile/UploadDialog"
-import UploadPage from "@/app/upload/filemanager"
 import UploadWizard from "@/app/upload/upload-wizard"
 import FilesPage from "@/app/files/files"
 
@@ -174,14 +173,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <UploadWizard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route
-            path="/upload/files" 
-            element={
-              <ProtectedRoute>
-                <UploadPage />
               </ProtectedRoute>
             } 
           />
