@@ -57,8 +57,8 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
-              {/* No placeholder text or icon */}
+            <div className="w-full h-full bg-gray-700 animate-fade-in">
+              {/* Empty div with no content - just the background color */}
             </div>
           )}
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -82,8 +82,8 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
-                    {/* No placeholder text or icon */}
+                  <div className="w-full h-full bg-gray-700 animate-fade-in">
+                    {/* Empty div with no content - just the background color */}
                   </div>
                 )}
                 <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -130,7 +130,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                   {/* Profile Info Tags */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {profile?.location && (
-                      <Button variant="outline\" size="sm\" className="rounded-full">
+                      <Button variant="outline" size="sm" className="rounded-full">
                         <MapPin className="h-3.5 w-3.5 mr-1" />
                         {profile?.location}
                       </Button>
