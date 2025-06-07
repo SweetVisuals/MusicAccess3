@@ -58,7 +58,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
             />
           ) : (
             <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
-              <Camera className="h-12 w-12 text-gray-400 opacity-40" />
+              <Camera className="h-12 w-12 text-gray-600 opacity-40" />
             </div>
           )}
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -82,8 +82,8 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-500 animate-fade-in flex items-center justify-center transition-all duration-300">
-                    <Camera className="h-10 w-10 text-gray-300 opacity-40" />
+                  <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
+                    <Camera className="h-10 w-10 text-gray-600 opacity-40" />
                   </div>
                 )}
                 <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -98,8 +98,8 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
                     {name && (
-  <h1 className="text-2xl font-bold truncate">{name}</h1>
-)}
+                      <h1 className="text-2xl font-bold truncate">{name}</h1>
+                    )}
                     <Badge className="bg-black text-white">Producer</Badge>
                   </div>
 
