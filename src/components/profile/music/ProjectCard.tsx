@@ -48,6 +48,15 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
     tag: 'Producer'
   };
 
+  // Default tracks if not provided
+  const tracks = project.tracks || [
+    {
+      id: `${project.id}-track-1`,
+      title: project.title,
+      duration: "3:45"
+    }
+  ];
+
   const handleGiveGem = async (trackId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -116,7 +125,7 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
           <div>
             <h3 className="font-medium">{project.title}</h3>
             <div className="text-xs text-muted-foreground">
-              {project.totalTracks} track{project.totalTracks !== 1 ? 's' : ''}
+              {project.totalTracks || tracks.length} track{(project.totalTracks || tracks.length) !== 1 ? 's' : ''}
             </div>
           </div>
           {project.isPopular && (
@@ -129,7 +138,7 @@ const ProjectCard = ({ project, variant, id }: ProjectCardProps) => {
         {/* Tracks List */}
         <div className="border-t pt-3">
           <div className="max-h-40 overflow-y-auto space-y-0.5 bg-background/50 rounded-lg p-1">
-            {project.tracks?.slice(0, 10).map((track) => (
+            {tracks.map((track) => (
               <div key={track.id} className="flex items-center">
                 <button
                   onClick={(e) => {
