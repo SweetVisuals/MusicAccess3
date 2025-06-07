@@ -8,8 +8,6 @@ import { UploadDialog } from './UploadDialog';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { DialogTrigger } from '@/components/ui/dialog';
 import { User, Profile, ProfileStats } from '@/lib/types';
-import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
 
 interface ProfileHeaderProps {
   user: User;
@@ -20,63 +18,24 @@ interface ProfileHeaderProps {
 
 const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }: ProfileHeaderProps) => {
   const [uploadType, setUploadType] = useState<'avatar' | 'banner' | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-
   const handleUpload = async (files: FileWithMetadata[]) => {
-    if (!uploadType || !files || files.length === 0 || !user?.id) return;
+    if (!uploadType || !files || files.length === 0) return;
     const file = files[0];
     
     try {
-      setIsUploading(true);
-      
-      // Generate a unique file path
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${uploadType}_${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-      
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('profiles')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (uploadError) throw uploadError;
-      
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('profiles')
-        .getPublicUrl(filePath);
-      
-      // Update profile with the new URL
-      if (profile) {
-        const updates = {
-          ...profile,
-          [uploadType === 'avatar' ? 'profile_url' : 'banner_url']: publicUrl
-        };
-        
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', user.id);
-        
-        if (updateError) throw updateError;
-        
-        // Update local state
-        updateProfile({
-          ...profile,
-          [uploadType === 'avatar' ? 'avatarUrl' : 'bannerUrl']: publicUrl
-        });
-        
-        toast.success(`${uploadType.charAt(0).toUpperCase() + uploadType.slice(1)} updated successfully`);
-      }
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        if (profile) {
+          updateProfile({
+            ...profile,
+            [uploadType === 'avatar' ? 'avatarUrl' : 'bannerUrl']: result
+          });
+        }
+      };
     } catch (error) {
       console.error('Error uploading image:', error);
-      toast.error(`Failed to upload ${uploadType}`);
-    } finally {
-      setIsUploading(false);
-      setUploadType(null);
     }
   };
 
@@ -85,20 +44,22 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
   const name = profile?.full_name || ''; // Changed from name to full_name
   const bannerUrl = profile?.bannerUrl || '';
   const avatarUrl = profile?.avatarUrl || '';
+  const hasAvatar = !!avatarUrl && avatarUrl !== '/default-avatar.png';
+  const hasBanner = !!bannerUrl && bannerUrl !== '/default-banner.jpg';
 
   return (
     <>
       <div className="relative">
         {/* Banner Image */}
         <div className="h-48 w-full overflow-hidden relative group cursor-pointer mb-20" onClick={() => setUploadType('banner')}>
-          {bannerUrl ? (
+          {hasBanner ? (
             <img
               src={bannerUrl}
               alt="Profile banner"
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gray-200 dark:bg-gray-800 animate-fade-in flex items-center justify-center transition-all duration-300">
+            <div className="w-full h-full bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
               <Camera className="h-12 w-12 text-gray-400 opacity-40" />
             </div>
           )}
@@ -116,15 +77,15 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                 className="h-32 w-32 rounded-full border-4 border-background overflow-hidden relative group cursor-pointer"
                 onClick={() => setUploadType('avatar')}
               >
-                {avatarUrl ? (
+                {hasAvatar ? (
                   <img
                     src={avatarUrl}
                     alt={name}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-300 dark:bg-gray-700 animate-fade-in flex items-center justify-center transition-all duration-300">
-                    <Camera className="h-10 w-10 text-gray-400 opacity-40" />
+                  <div className="w-full h-full bg-gray-500 animate-fade-in flex items-center justify-center transition-all duration-300">
+                    <Camera className="h-10 w-10 text-gray-300 opacity-40" />
                   </div>
                 )}
                 <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-90 transition-opacity duration-300 bg-black/30">
@@ -171,7 +132,7 @@ const ProfileHeader = ({ user, profile, stats, updateProfile = async () => {} }:
                   {/* Profile Info Tags */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {profile?.location && (
-                      <Button variant="outline" size="sm" className="rounded-full">
+                      <Button variant="outline\" size="sm\" className="rounded-full">
                         <MapPin className="h-3.5 w-3.5 mr-1" />
                         {profile?.location}
                       </Button>
