@@ -318,7 +318,7 @@ export default function MessagesPage() {
                       <TabsTrigger value="unread" className="flex-1">
                         Unread
                         {unreadCount > 0 && (
-                          <Badge variant="secondary" className="ml-1">{unreadCount}</Badge>
+                          <Badge variant="secondary\" className="ml-1">{unreadCount}</Badge>
                         )}
                       </TabsTrigger>
                       <TabsTrigger value="pinned" className="flex-1">Pinned</TabsTrigger>
