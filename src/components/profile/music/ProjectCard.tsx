@@ -207,6 +207,7 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
                     e.stopPropagation();
                     playTrack({
                       ...track,
+                      audioUrl: track.file_url || track.audioUrl, // Map file_url to audioUrl
                       projectTitle: project.title,
                       artworkUrl: project.artworkUrl
                     });
