@@ -1,26 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import useProfile from '@/hooks/useProfile';
 import { useTracks } from '@/hooks/useTracks';
-import { useFiles } from '@/hooks/useFiles';
 import ProjectCard from '../music/ProjectCard';
-import { Button } from '@/components/ui/button';
-import { Plus, Folder, File, Music, X, Check } from 'lucide-react';
+import { Button } from '@/components/@/ui/button';
+import { Plus, Music, Upload, X, Check } from 'lucide-react';
 import { 
   Dialog, 
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
   DialogFooter 
-} from '@/components/ui/dialog';
+} from '@/components/@/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/@/ui/checkbox';
-import { Badge } from '@/components/@/ui/badge';
-import { supabase } from '@/lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
-import { toast } from 'sonner';
+import { Label } from '@/components/ui/label';
+import { useFiles } from '@/hooks/useFiles';
 import { FileItem } from '@/lib/types';
+import { Checkbox } from '@/components/@/ui/checkbox';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ProjectsTabProps {
   viewMode?: 'grid' | 'list';
@@ -33,88 +32,119 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
   const { profile } = useProfile();
   const userId = profile?.id;
   const { tracks: userTracks, loading, error } = useTracks(userId || '');
-  const { files, loading: filesLoading } = useFiles(userId || '');
+  const { files, loading: filesLoading, fetchFiles } = useFiles(userId || '');
   
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [projectTitle, setProjectTitle] = useState('');
-  const [projectDescription, setProjectDescription] = useState('');
-  const [projectGenre, setProjectGenre] = useState('');
-  const [projectBpm, setProjectBpm] = useState('');
-  const [projectKey, setProjectKey] = useState('');
-  const [isPublic, setIsPublic] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    genre: '',
+    bpm: '',
+    key: '',
+    isPublic: false
+  });
+  const [selectedFiles, setSelectedFiles] = useState<FileItem[]>([]);
+  const [availableFiles, setAvailableFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch projects
+  // Filter audio files only
   useEffect(() => {
-    const fetchProjects = async () => {
-      if (!userId) return;
-      
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        
-        setProjects(data || []);
-      } catch (err) {
-        console.error('Error fetching projects:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchProjects();
+    if (files) {
+      setAvailableFiles(files.filter(file => file.type === 'audio'));
+    }
+  }, [files]);
+
+  // Fetch files when component mounts
+  useEffect(() => {
+    if (userId) {
+      fetchFiles();
+      fetchProjects();
+    }
   }, [userId]);
 
-  const handleCreateProject = async () => {
-    if (!userId) {
-      toast.error('You must be logged in to create a project');
+  const fetchProjects = async () => {
+    if (!userId) return;
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      setProjects(data || []);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+      toast.error('Failed to load projects');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFileSelect = (file: FileItem) => {
+    if (selectedFiles.length >= 10 && !selectedFiles.some(f => f.id === file.id)) {
+      toast.error("You can select up to 10 files for a project");
       return;
     }
     
-    if (!projectTitle.trim()) {
-      toast.error('Project title is required');
+    setSelectedFiles(prev => {
+      const isSelected = prev.some(f => f.id === file.id);
+      if (isSelected) {
+        return prev.filter(f => f.id !== file.id);
+      } else {
+        return [...prev, file];
+      }
+    });
+  };
+
+  const handleCreateProject = async () => {
+    if (!userId) {
+      toast.error("You must be logged in to create a project");
+      return;
+    }
+    
+    if (!formData.title.trim()) {
+      toast.error("Please enter a title for your project");
       return;
     }
     
     if (selectedFiles.length === 0) {
-      toast.error('Please select at least one file');
+      toast.error("Please select at least one file for your project");
       return;
     }
     
     setIsSubmitting(true);
     
     try {
-      // Create project
+      // Create a new project
       const projectId = uuidv4();
       const { error: projectError } = await supabase
         .from('projects')
         .insert({
           id: projectId,
           user_id: userId,
-          title: projectTitle.trim(),
-          description: projectDescription.trim(),
+          title: formData.title,
+          description: formData.description,
           type: 'audio',
-          genre: projectGenre.trim(),
-          bpm: projectBpm ? parseInt(projectBpm) : null,
-          key: projectKey.trim(),
-          is_public: isPublic
+          genre: formData.genre,
+          bpm: formData.bpm ? parseInt(formData.bpm) : null,
+          key: formData.key,
+          is_public: formData.isPublic,
+          cover_art_url: selectedFiles[0]?.audio_url || null // Use the first file's image as cover
         });
       
       if (projectError) throw projectError;
       
-      // Add files to project
-      const projectFiles = selectedFiles.map((fileId, index) => ({
+      // Add files to the project
+      const projectFiles = selectedFiles.map((file, index) => ({
         project_id: projectId,
-        file_id: fileId,
-        position: index + 1
+        file_id: file.id,
+        position: index
       }));
       
       const { error: filesError } = await supabase
@@ -123,69 +153,33 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
       
       if (filesError) throw filesError;
       
-      toast.success('Project created successfully');
-      
-      // Reset form
-      setProjectTitle('');
-      setProjectDescription('');
-      setProjectGenre('');
-      setProjectBpm('');
-      setProjectKey('');
-      setIsPublic(false);
+      toast.success("Project created successfully!");
+      setShowCreateDialog(false);
+      setFormData({ 
+        title: '', 
+        description: '', 
+        genre: '', 
+        bpm: '', 
+        key: '', 
+        isPublic: false 
+      });
       setSelectedFiles([]);
-      setIsCreateDialogOpen(false);
-      
-      // Refresh projects
-      const { data: newProjects } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      
-      setProjects(newProjects || []);
+      fetchProjects();
     } catch (error) {
       console.error('Error creating project:', error);
-      toast.error('Failed to create project');
+      toast.error("Failed to create project");
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const toggleFileSelection = (fileId: string) => {
-    setSelectedFiles(prev => {
-      if (prev.includes(fileId)) {
-        return prev.filter(id => id !== fileId);
-      } else {
-        if (prev.length >= 10) {
-          toast.error('You can select up to 10 files');
-          return prev;
-        }
-        return [...prev, fileId];
-      }
-    });
   };
 
   if (!userId) return <div className="p-4">Please log in to view your projects.</div>;
   if (loading && isLoading) return <div className="p-4 animate-pulse">Loading projects...</div>;
   if (error) return <div className="p-4 text-destructive">Error: {error}</div>;
 
-  // Combine fetched projects with any tracks data
+  // Combine fetched projects with any tracks that might have been passed in
   const allProjects = [...projects];
   
-  // Add tracks as projects if they're not already included
-  if (tracks && tracks.length > 0) {
-    tracks.forEach(track => {
-      if (!allProjects.some(project => project.id === track.id)) {
-        allProjects.push({
-          id: track.id,
-          title: track.title || 'Untitled Project',
-          cover_art_url: track.cover_art_url,
-          created_at: track.created_at
-        });
-      }
-    });
-  }
-
   // Optionally sort projects (implement sort logic as needed)
   let sortedProjects = [...allProjects];
   if (sortBy === 'latest') sortedProjects.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -193,49 +187,54 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
   // Add 'popular' sorting if you have a metric
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Your Projects</h2>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
+        <h2 className="text-2xl font-bold">Projects</h2>
+        <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Create Project
         </Button>
       </div>
-
-      <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-fade-in' : 'gap-4'}`}>
-        {sortedProjects.length === 0 ? (
-          <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
-            <Folder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No projects found</h3>
-            <p className="text-muted-foreground mt-2 mb-4">
-              Create your first project to get started
-            </p>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Project
-            </Button>
-          </div>
-        ) : (
-          sortedProjects.map((project) => (
+      
+      {sortedProjects.length === 0 ? (
+        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+          <Music className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">No projects found</h3>
+          <p className="text-muted-foreground mt-2 mb-4">
+            Create your first project to showcase your work
+          </p>
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </Button>
+        </div>
+      ) : (
+        <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'gap-4'}`}>
+          {sortedProjects.map((project) => (
             <ProjectCard
               key={project.id}
-              id={project.id}
               project={{
                 id: project.id,
                 title: project.title || 'Untitled Project',
                 artworkUrl: project.cover_art_url || 'https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg',
                 tracks: [],
-                totalTracks: project.track_count || 1,
-                isPopular: false,
+                totalTracks: project.files?.length || 0,
+                isPopular: project.is_featured || false,
+                creator: {
+                  name: profile?.full_name || 'Artist',
+                  avatar: profile?.avatarUrl,
+                  tag: profile?.professionalTitle || 'Producer'
+                }
               }}
               variant={viewMode}
+              id={project.id}
             />
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Create Project Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
@@ -247,9 +246,9 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
                 <Label htmlFor="title">Project Title</Label>
                 <Input 
                   id="title" 
-                  value={projectTitle}
-                  onChange={(e) => setProjectTitle(e.target.value)}
-                  placeholder="Enter project title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  placeholder="Enter a title for your project"
                 />
               </div>
               
@@ -257,10 +256,10 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
                 <Label htmlFor="description">Description</Label>
                 <Textarea 
                   id="description" 
-                  value={projectDescription}
-                  onChange={(e) => setProjectDescription(e.target.value)}
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
                   placeholder="Describe your project"
-                  rows={3}
+                  rows={4}
                 />
               </div>
               
@@ -269,147 +268,140 @@ const ProjectsTab = ({ viewMode = 'grid', sortBy = 'latest', tracks = [], stats 
                   <Label htmlFor="genre">Genre</Label>
                   <Input 
                     id="genre" 
-                    value={projectGenre}
-                    onChange={(e) => setProjectGenre(e.target.value)}
+                    value={formData.genre}
+                    onChange={(e) => setFormData({...formData, genre: e.target.value})}
                     placeholder="e.g. Hip Hop, EDM"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="key">Key</Label>
-                  <Input 
-                    id="key" 
-                    value={projectKey}
-                    onChange={(e) => setProjectKey(e.target.value)}
-                    placeholder="e.g. C Minor"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
                   <Label htmlFor="bpm">BPM</Label>
                   <Input 
                     id="bpm" 
                     type="number"
-                    value={projectBpm}
-                    onChange={(e) => setProjectBpm(e.target.value)}
+                    value={formData.bpm}
+                    onChange={(e) => setFormData({...formData, bpm: e.target.value})}
                     placeholder="e.g. 120"
                   />
                 </div>
-                
-                <div className="flex items-end">
-                  <div className="flex items-center space-x-2 h-10">
-                    <Checkbox 
-                      id="isPublic" 
-                      checked={isPublic}
-                      onCheckedChange={(checked) => setIsPublic(checked as boolean)}
-                    />
-                    <Label htmlFor="isPublic">Make project public</Label>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="key">Key</Label>
+                <Input 
+                  id="key" 
+                  value={formData.key}
+                  onChange={(e) => setFormData({...formData, key: e.target.value})}
+                  placeholder="e.g. C Minor"
+                />
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="isPublic" 
+                  checked={formData.isPublic}
+                  onCheckedChange={(checked) => 
+                    setFormData({...formData, isPublic: checked as boolean})
+                  }
+                />
+                <Label htmlFor="isPublic">Make this project public</Label>
+              </div>
+              
+              <div className="pt-4">
+                <h3 className="text-sm font-medium mb-2">Selected Files ({selectedFiles.length}/10)</h3>
+                {selectedFiles.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    No files selected. Select files from the list on the right.
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto border rounded-md p-2">
+                    {selectedFiles.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                        <div className="flex items-center gap-2">
+                          <Music className="h-4 w-4 text-primary" />
+                          <span className="text-sm truncate max-w-[200px]">{file.name}</span>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-7 w-7 p-0"
+                          onClick={() => handleFileSelect(file)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="flex justify-between">
-                  <span>Select Files ({selectedFiles.length}/10)</span>
-                  {selectedFiles.length > 0 && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setSelectedFiles([])}
-                      className="h-auto py-0 px-2"
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </Label>
-                
-                <div className="border rounded-md h-[300px] overflow-y-auto p-2">
-                  {filesLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
-                    </div>
-                  ) : files.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <File className="h-12 w-12 text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">No files found</p>
-                      <p className="text-sm text-muted-foreground">
-                        Upload files first to add them to your project
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {files.map((file) => (
-                        <div 
-                          key={file.id}
-                          className={`flex items-center justify-between p-2 rounded-md cursor-pointer ${
-                            selectedFiles.includes(file.id) 
-                              ? 'bg-primary/10 border border-primary' 
-                              : 'hover:bg-muted'
-                          }`}
-                          onClick={() => toggleFileSelection(file.id)}
-                        >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Available Audio Files</h3>
+                {filesLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+              </div>
+              
+              {availableFiles.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No audio files found. Upload some files first.
+                  </p>
+                </div>
+              ) : (
+                <div className="border rounded-md h-[350px] overflow-y-auto">
+                  {availableFiles.map((file) => {
+                    const isSelected = selectedFiles.some(f => f.id === file.id);
+                    return (
+                      <div 
+                        key={file.id} 
+                        className={`flex items-center justify-between p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
+                          isSelected ? 'bg-primary/10' : ''
+                        }`}
+                        onClick={() => handleFileSelect(file)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                            isSelected ? 'bg-primary text-primary-foreground' : 'border'
+                          }`}>
+                            {isSelected && <Check className="h-3 w-3" />}
+                          </div>
                           <div className="flex items-center gap-2">
                             <Music className="h-4 w-4 text-primary" />
-                            <span className="truncate max-w-[200px]">{file.name}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">{file.size}</span>
-                            {selectedFiles.includes(file.id) ? (
-                              <Check className="h-4 w-4 text-primary" />
-                            ) : null}
+                            <span className="text-sm truncate max-w-[250px]">{file.name}</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <span className="text-xs text-muted-foreground">{file.size}</span>
+                      </div>
+                    );
+                  })}
                 </div>
-                
-                {selectedFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {selectedFiles.map(fileId => {
-                      const file = files.find(f => f.id === fileId);
-                      return file ? (
-                        <Badge 
-                          key={fileId} 
-                          variant="outline"
-                          className="flex items-center gap-1"
-                        >
-                          <Music className="h-3 w-3" />
-                          <span className="truncate max-w-[150px]">{file.name}</span>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-4 w-4 p-0 ml-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFileSelection(fileId);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </Badge>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
           
           <DialogFooter>
             <Button 
               variant="outline" 
-              onClick={() => setIsCreateDialogOpen(false)}
+              onClick={() => {
+                setShowCreateDialog(false);
+                setFormData({ 
+                  title: '', 
+                  description: '', 
+                  genre: '', 
+                  bpm: '', 
+                  key: '', 
+                  isPublic: false 
+                });
+                setSelectedFiles([]);
+              }}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleCreateProject}
-              disabled={isSubmitting || !projectTitle.trim() || selectedFiles.length === 0}
+              disabled={isSubmitting || !formData.title || selectedFiles.length === 0}
             >
               {isSubmitting ? 'Creating...' : 'Create Project'}
             </Button>
