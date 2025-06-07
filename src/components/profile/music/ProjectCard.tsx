@@ -23,6 +23,7 @@ interface ProjectCardProps {
     totalTracks?: number;
     isPopular?: boolean;
     creator?: {
+      id?: string; // Add id to the creator object
       name: string;
       avatar?: string;
       tag?: string;
@@ -45,6 +46,7 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
 
   // Default creator info if not provided
   const creator = project.creator || {
+    id: user?.id, // Use current user's ID as fallback
     name: 'Artist Name',
     avatar: 'https://images.pexels.com/photos/2269872/pexels-photo-2269872.jpeg',
     tag: 'Producer'
@@ -159,7 +161,7 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
           </div>
           <div className="flex items-center gap-1">
             {project.isPopular && (
-              <Badge variant="secondary\" className="shrink-0 text-xs">
+              <Badge variant="secondary" className="shrink-0 text-xs">
                 Popular
               </Badge>
             )}
@@ -186,7 +188,7 @@ const ProjectCard = ({ project, variant, id, onDelete }: ProjectCardProps) => {
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </DropdownMenuItem>
-                {user && user.id === project.creator?.id && (
+                {user && (creator.id === user.id || project.creator?.id === user.id) && (
                   <DropdownMenuItem 
                     onClick={(e) => {
                       e.preventDefault();
