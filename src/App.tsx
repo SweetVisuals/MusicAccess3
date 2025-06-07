@@ -173,15 +173,15 @@ function App() {
             path="/upload" 
             element={
               <ProtectedRoute>
-                <UploadPage />
+                <UploadWizard />
               </ProtectedRoute>
             } 
           />
           <Route
-            path="/upload/wizard" 
+            path="/upload/files" 
             element={
               <ProtectedRoute>
-                <UploadWizard />
+                <UploadPage />
               </ProtectedRoute>
             } 
           />
