@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useLocation, Link } from "react-router-dom"
+import { useMessages } from "@/hooks/useMessages"
 
 export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth()
@@ -24,6 +25,7 @@ export function SiteHeader() {
   const [walletBalance, setWalletBalance] = useState<number>(0)
   const [unreadMessages, setUnreadMessages] = useState<number>(0)
   const location = useLocation()
+  const { unreadCount } = useMessages(user?.id || '')
 
   // Get the current page name from the location
   const getCurrentPageName = () => {
@@ -104,15 +106,8 @@ export function SiteHeader() {
       }
     }
 
-    // Simulate fetching unread message count
-    const fetchUnreadMessages = () => {
-      // In a real app, this would be an API call
-      setUnreadMessages(Math.floor(Math.random() * 5))
-    }
-
     fetchUserStats()
     fetchUserWallet()
-    fetchUnreadMessages()
 
     // Listen for gem balance updates
     const handleGemBalanceUpdate = () => {
@@ -125,6 +120,11 @@ export function SiteHeader() {
       window.removeEventListener('gem-balance-update', handleGemBalanceUpdate)
     }
   }, [user])
+
+  // Update unread messages count from the hook
+  useEffect(() => {
+    setUnreadMessages(unreadCount);
+  }, [unreadCount]);
 
   if (isLoading) return null
 
@@ -153,7 +153,7 @@ export function SiteHeader() {
           </div>
           <ThemeToggle />
           {!user ? (
-            <Button asChild variant="ghost\" size="sm">
+            <Button asChild variant="ghost" size="sm">
               <a href="/auth/login">
                 Login
               </a>
@@ -278,7 +278,7 @@ export function SiteHeader() {
                       <MessageSquare className="mr-2 h-4 w-4" />
                       Messages
                       {unreadMessages > 0 && (
-                        <Badge variant="secondary\" className="ml-auto">{unreadMessages}</Badge>
+                        <Badge variant="secondary" className="ml-auto">{unreadMessages}</Badge>
                       )}
                     </Link>
                   </DropdownMenuItem>

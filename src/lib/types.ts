@@ -162,3 +162,44 @@ export interface ProfileWithStatsResponse {
   profile: Profile;
   stats: ProfileStats | null;
 }
+
+// Messaging types
+export interface Conversation {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  participants: ConversationParticipant[];
+  last_message?: Message;
+}
+
+export interface ConversationParticipant {
+  conversation_id: string;
+  user_id: string;
+  joined_at: string;
+  last_read_at: string;
+  is_pinned: boolean;
+  profile?: Profile;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  is_read: boolean;
+  metadata?: any;
+  sender?: Profile;
+  attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  id: string;
+  message_id: string;
+  file_url: string;
+  file_type: string;
+  file_name: string;
+  file_size?: number;
+  created_at: string;
+}
